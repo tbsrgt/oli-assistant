@@ -158,6 +158,10 @@ object Sites {
         return fresh to (keep + fresh.map { it.url })
     }
 
+    /** Sites dont la panne avait été signalée et qui répondent de nouveau (OK ou à surveiller). */
+    fun recoveries(checks: List<SiteCheck>, alreadyNotified: Set<String>): List<SiteCheck> =
+        checks.filter { it.url in alreadyNotified && (it.status == SiteStatus.OK || it.status == SiteStatus.WARNING) }
+
     /** Tri d'affichage : en panne d'abord, puis à surveiller, en ligne, pas vérifié. */
     fun sorted(checks: List<SiteCheck>): List<SiteCheck> =
         checks.sortedWith(compareBy<SiteCheck> { it.status.order }.thenBy { it.shortHost })

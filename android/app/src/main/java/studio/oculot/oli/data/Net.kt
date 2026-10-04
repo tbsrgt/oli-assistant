@@ -83,4 +83,56 @@ object Net {
             conn.disconnect()
         }
     }
+
+    /** Réponse brute d'un appel : code HTTP et corps (même en cas d'erreur). */
+    data class Reply(val code: Int, val body: String)
+
+    /**
+     * POST JSON. Ne lève pas d'exception sur un code ≠ 2xx (le corps d'erreur est renvoyé),
+     * seulement sur un problème réseau (IOException).
+     */
+    fun postJson(
+        urlString: String,
+        json: String,
+        headers: Map<String, String> = emptyMap(),
+        connectTimeoutMs: Int = TIMEOUT_MS,
+        readTimeoutMs: Int = TIMEOUT_MS,
+    ): Reply = send("POST", urlString, json, headers, connectTimeoutMs, readTimeoutMs)
+
+    /** GET qui renvoie le code et le corps sans lever d'exception sur un code ≠ 2xx. */
+    fun getReply(
+        urlString: String,
+        headers: Map<String, String> = emptyMap(),
+        connectTimeoutMs: Int = TIMEOUT_MS,
+        readTimeoutMs: Int = TIMEOUT_MS,
+    ): Reply = send("GET", urlString, null, headers, connectTimeoutMs, readTimeoutMs)
+
+    private fun send(
+        method: String, urlString: String, json: String?, headers: Map<String, String>,
+        connectTimeoutMs: Int, readTimeoutMs: Int,
+    ): Reply {
+        val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
+            requestMethod = method
+            connectTimeout = connectTimeoutMs
+            readTimeout = readTimeoutMs
+            instanceFollowRedirects = true
+            useCaches = false
+            setRequestProperty("User-Agent", USER_AGENT)
+            setRequestProperty("Accept", "application/json")
+            headers.forEach { (k, v) -> setRequestProperty(k, v) }
+            if (json != null) {
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+        }
+        try {
+            if (json != null) conn.outputStream.use { it.write(json.toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            return Reply(code, body)
+        } finally {
+            conn.disconnect()
+        }
+    }
 }

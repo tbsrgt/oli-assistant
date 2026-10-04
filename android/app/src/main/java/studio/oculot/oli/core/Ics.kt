@@ -22,6 +22,8 @@ data class AgendaEvent(
     val end: Instant,
     val isAllDay: Boolean,
     val location: String,
+    val description: String = "",
+    val url: String = "",
 ) {
     fun timeLabel(zone: ZoneId = ZoneId.systemDefault()): String =
         if (isAllDay) "Journée" else DateTimeFormatter.ofPattern("HH:mm", Locale.FRANCE).format(start.atZone(zone))
@@ -80,6 +82,8 @@ object Ics {
             val uid = b.value("UID") ?: "sans-uid-${out.size}"
             val title = b.value("SUMMARY")?.let(::unescape)?.ifBlank { null } ?: "(sans titre)"
             val location = b.value("LOCATION")?.let(::unescape).orEmpty()
+            val description = b.value("DESCRIPTION")?.let(::unescape).orEmpty()
+            val link = (b.value("URL") ?: b.value("X-GOOGLE-CONFERENCE")).orEmpty().trim()
 
             val duration: Duration = b.first("DTEND")?.let { p ->
                 parseDate(p.value, p.params, zone)?.let { e ->
@@ -103,7 +107,7 @@ object Ics {
                     // Un événement en cours (commencé avant la fenêtre mais pas fini) reste utile.
                     if (!(s.isBefore(windowStart) && s.plus(duration).isAfter(now))) continue
                 }
-                out += AgendaEvent(id, title, s, s.plus(duration), start.isAllDay, location)
+                out += AgendaEvent(id, title, s, s.plus(duration), start.isAllDay, location, description, link)
             }
         }
         return out.sortedWith(compareBy<AgendaEvent> { it.start }.thenBy { it.isAllDay }.thenBy { it.title })

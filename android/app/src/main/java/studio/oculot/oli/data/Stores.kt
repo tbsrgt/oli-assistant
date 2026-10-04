@@ -15,7 +15,20 @@ data class Settings(
     val espaceUrl: String = "",
     val sites: String = "",
     val icsUrl: String = "",
-)
+    // Agenda Oculot : mot de passe de l'agenda et membre choisi (le lien iCal en découle).
+    val agendaCode: String = "",
+    val agendaMemberId: String = "",
+    val agendaMemberName: String = "",
+    // Jumelage avec Oli sur le Mac (Claude).
+    val macHost: String = "",
+    val macPort: Int = 0,
+    val macToken: String = "",
+    val macName: String = "",
+) {
+    val mac: studio.oculot.oli.core.MacPairing?
+        get() = if (macHost.isNotBlank() && macToken.isNotBlank() && macPort > 0)
+            studio.oculot.oli.core.MacPairing(macHost, macPort, macToken, macName.ifBlank { "ton Mac" }) else null
+}
 
 class SettingsStore(context: Context) {
     private val prefs: SharedPreferences = run {
@@ -32,6 +45,13 @@ class SettingsStore(context: Context) {
         espaceUrl = prefs.getString("espace_url", "").orEmpty(),
         sites = prefs.getString("sites", "").orEmpty(),
         icsUrl = prefs.getString("ics_url", "").orEmpty(),
+        agendaCode = prefs.getString("agenda_code", "").orEmpty(),
+        agendaMemberId = prefs.getString("agenda_membre", "").orEmpty(),
+        agendaMemberName = prefs.getString("agenda_nom", "").orEmpty(),
+        macHost = prefs.getString("mac_host", "").orEmpty(),
+        macPort = prefs.getInt("mac_port", 0),
+        macToken = prefs.getString("mac_token", "").orEmpty(),
+        macName = prefs.getString("mac_name", "").orEmpty(),
     )
 
     fun save(s: Settings) {
@@ -40,6 +60,13 @@ class SettingsStore(context: Context) {
             .putString("espace_url", s.espaceUrl.trim())
             .putString("sites", s.sites.trim())
             .putString("ics_url", s.icsUrl.trim())
+            .putString("agenda_code", s.agendaCode)
+            .putString("agenda_membre", s.agendaMemberId)
+            .putString("agenda_nom", s.agendaMemberName)
+            .putString("mac_host", s.macHost.trim())
+            .putInt("mac_port", s.macPort)
+            .putString("mac_token", s.macToken.trim())
+            .putString("mac_name", s.macName)
             .apply()
     }
 }

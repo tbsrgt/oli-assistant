@@ -13,8 +13,10 @@ agenda, Instagram), avec un terminal intégré.
   `Social.swift` / `SocialPoller.swift` (Instagram), `Briefing.swift` / `BriefingCenter.swift`,
   `OculotHomeView.swift` (accueil), `OliTerminal.swift` (terminal SwiftTerm).
 - `OliAssistant/Widget/` — widget WidgetKit (lit l’instantané `Sources/Shared/OliWidgetSnapshot.swift` écrit par `WidgetSnapshotWriter.swift`).
-- `android/` — app Android d’Oli (Kotlin + Compose) : Aujourd’hui, réglages chiffrés, surveillance
-  des sites en arrière-plan. `JAVA_HOME=~/.local/jdk-17/Contents/Home ./gradlew assembleDebug testDebugUnitTest`
+- `android/` — app Android d’Oli (Kotlin + Compose) : Aujourd’hui, verrou biométrique, Connexions (espace,
+  agenda Oculot, sites, Claude via jumelage QR avec le Mac `oli://pair` → `/v1/status`, `/v1/chat`),
+  automatisations (briefing 8 h 30, rappels, pannes, échéances), partage, widget Glance. Clair http autorisé
+  globalement (Android ne filtre pas par IP) mais l’app ne parle en clair qu’à une IP locale (`MacLink.isLocalHost`). `JAVA_HOME=~/.local/jdk-17/Contents/Home ./gradlew assembleDebug testDebugUnitTest`
   (SDK dans `~/Library/Android/sdk`, chemin dans `android/local.properties`, non versionné).
 - `docs/PLAN.md` — plan par phases. `tools/sounds-gen.py` — génère les sons.
 
