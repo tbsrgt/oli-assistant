@@ -1000,6 +1000,19 @@ struct PromptView: View {
 
                 HStack(spacing: 0) {
                     Spacer()
+                    if state.chatProvider == .anthropic && ClaudeService.shared.usesClaudeCode {
+                        // Oculot: the chat runs on the user's own Claude — nothing to pick.
+                        HStack(spacing: 5) {
+                            Image(systemName: "sparkles").font(.system(size: 9, weight: .semibold))
+                                .foregroundColor(Color(hex: "#E07950"))
+                            Text("Ton Claude").font(.system(size: 10.5, weight: .medium))
+                                .foregroundColor(Color(hex: "#9398A1"))
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.white.opacity(0.06))
+                        .clipShape(Capsule())
+                        .help("Le chat utilise ton Claude Code (ton abonnement).")
+                    } else {
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
                             showModelPicker.toggle()
@@ -1025,6 +1038,7 @@ struct PromptView: View {
                     .popover(isPresented: $showModelPicker, arrowEdge: .bottom) {
                         ModelPickerView(state: state, isPresented: $showModelPicker)
                             .frame(width: 300)
+                    }
                     }
                 }
                 .padding(.horizontal, 10)

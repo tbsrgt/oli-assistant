@@ -107,6 +107,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AgendaPoller.shared.start()
         #if DEBUG
         BriefingCenter.shared.installDebugTrigger()
+        // Dev only: scripts/chat-demo.sh "question" sends a message to the chat, like typing it.
+        DistributedNotificationCenter.default().addObserver(forName: Notification.Name("studio.oculot.oli.chatDemo"),
+                                                            object: nil, queue: .main) { note in
+            let q = note.object as? String ?? "Bonjour"
+            Task { @MainActor in
+                let st = AppState.shared
+                st.chatHistory.append(ChatMessage(role: .user, content: q))
+                NotificationCenter.default.post(name: .hookExpand, object: IslandView.prompt)
+                await ClaudeService.shared.chat(query: q, context: nil, state: st)
+            }
+        }
         #endif
         SitesPoller.shared.start()
         GithubPoller.shared.start()

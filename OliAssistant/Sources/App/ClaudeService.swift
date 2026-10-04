@@ -302,8 +302,12 @@ final class ClaudeService {
             await chatOpenAICompatible(query: query, context: context, state: state)
             return
         }
+        // Oculot: Claude connected (or no API key) → always the user's own Claude Code, never the API.
+        if usesClaudeCode {
+            await chatWithClaudeCode(query: query, state: state)
+            return
+        }
         guard let key = apiKey, !key.isEmpty else {
-            // Oculot: no API key → Oli uses the user's own Claude Code (their subscription).
             await chatWithClaudeCode(query: query, state: state)
             return
         }
@@ -710,6 +714,12 @@ final class ClaudeService {
     }
 
     // MARK: - Chat through the user's Claude Code (no API key needed)
+
+    /// The chat talks to the user's Claude Code: Claude is connected in Settings, or there is no API key.
+    var usesClaudeCode: Bool {
+        guard Self.claudeCodePath != nil else { return false }
+        return HookServer.claudeHooksInstalled() || (apiKey ?? "").isEmpty
+    }
 
     /// Session of Claude Code used by the chat, kept so the conversation has a memory.
     private var claudeCodeSession: String? = nil
