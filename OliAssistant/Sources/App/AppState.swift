@@ -262,17 +262,8 @@ final class AppState: ObservableObject {
         }
     }
 
-    // n8n workflow filter — empty = watch all workflows
-    @Published var n8nWorkflowFilter: Set<String> = [] {
-        didSet {
-            if let data = try? JSONEncoder().encode(Array(n8nWorkflowFilter)) {
-                UserDefaults.standard.set(data, forKey: "n8nWorkflowFilter")
-            }
-        }
-    }
-
     // Active integration pills (main workspace pill excluded). Max 4.
-    @Published var activeIntegrations: Set<String> = ["integration_espace", "integration_vercel", "integration_github", "integration_n8n"] {
+    @Published var activeIntegrations: Set<String> = ["integration_espace", "integration_vercel", "integration_github", "integration_sites"] {
         didSet {
             if let data = try? JSONEncoder().encode(Array(activeIntegrations)) {
                 UserDefaults.standard.set(data, forKey: "activeIntegrations")
@@ -331,32 +322,10 @@ final class AppState: ObservableObject {
     // Vercel deployments (populated by VercelPoller)
     @Published var vercelDeployments: [VercelDeployment] = []
 
-    // Resend emails (populated by ResendPoller)
-    @Published var resendEmails: [ResendEmail] = []
-    @Published var resendTotal: Int? = nil
-
     // GitHub stats + pulse + activity (populated by GithubPoller)
     @Published var githubStats: GitHubStats? = nil
     @Published var githubPulse: GitHubPulse? = nil
     @Published var githubActivity: GitHubActivity? = nil
-
-    // Stripe (populated by StripePoller)
-    @Published var stripePayments: [StripePayment] = []
-    @Published var stripeBalance: Int = 0           // raw balance in cents
-    @Published var stripeDisplayBalance: Int = 0    // animated balance target
-    @Published var stripeCurrency: String = "eur"
-    @Published var stripeLoaded: Bool = false       // true after first successful poll
-    @Published var stripeError: String? = nil      // last API error (nil = ok)
-
-    // Cal.com (populated by CalcomPoller)
-    @Published var calcomBookings: [CalcomBooking] = []
-    @Published var calcomLoaded: Bool = false
-    @Published var calcomError: String? = nil
-
-    // Notion (populated by NotionPoller)
-    @Published var notionPages: [NotionPage] = []
-    @Published var notionLoaded: Bool = false
-    @Published var notionError: String? = nil
 
     // Chat conversation history
     @Published var chatHistory: [ChatMessage] = []
@@ -463,8 +432,6 @@ final class AppState: ObservableObject {
         if let v = ud.object(forKey: "hotkeyCode")    as? Int   { hotkeyCode = UInt16(v) }
         if let d = ud.data(forKey: "vercelProjectFilter"),
            let a = try? JSONDecoder().decode([String].self, from: d) { vercelProjectFilter = Set(a) }
-        if let d = ud.data(forKey: "n8nWorkflowFilter"),
-           let a = try? JSONDecoder().decode([String].self, from: d) { n8nWorkflowFilter = Set(a) }
         if let d = ud.data(forKey: "activeIntegrations"),
            let a = try? JSONDecoder().decode([String].self, from: d) { activeIntegrations = Set(a) }
         if let s = ud.string(forKey: "sitesManual") { sitesManual = s }
@@ -616,13 +583,8 @@ final class AppState: ObservableObject {
         case "ai_openai":             return k.get("openai-api-key") != nil
         case "ai_ollama":             return !ollamaServerURL.isEmpty
         case "ai_lmstudio":           return !lmstudioServerURL.isEmpty
-        case "integration_resend":    return k.get("resend-api-key") != nil
-        case "integration_n8n":       return k.get("n8n-api-key") != nil
         case "integration_vercel":    return k.get("vercel-token") != nil
         case "integration_github":    return k.get("github-token") != nil
-        case "integration_stripe":    return k.get("stripe-api-key") != nil
-        case "integration_notion":    return k.get("notion-api-key") != nil
-        case "integration_calcom":    return k.get("calcom-api-key") != nil
         case "integration_espace":    return k.get("espace-token") != nil
         case "integration_agenda":    return k.get("agenda-ics-url") != nil
         case "integration_instagram": return k.get("instagram-token") != nil
@@ -754,29 +716,6 @@ struct VercelDeployment: Identifiable {
     }
 }
 
-// MARK: - Resend
-
-struct ResendEmail: Identifiable {
-    let id: String
-    let to: [String]
-    let subject: String
-    let createdAt: Date
-    let lastEvent: String   // "delivered", "bounced", "complained", "opened", etc.
-
-    var recipientShort: String {
-        guard let first = to.first else { return "?" }
-        return first.components(separatedBy: "@").first ?? first
-    }
-    var timeAgo: String {
-        let diff = Date().timeIntervalSince(createdAt)
-        if diff < 60    { return "just now" }
-        if diff < 3600  { return "\(Int(diff/60))m" }
-        if diff < 86400 { return "\(Int(diff/3600))h" }
-        return "\(Int(diff/86400))d"
-    }
-    var isDelivered: Bool { lastEvent == "delivered" }
-}
-
 // MARK: - GitHub
 
 struct GitHubStats {
@@ -784,66 +723,6 @@ struct GitHubStats {
     let totalStars: Int
 }
 
-// MARK: - Stripe
-
-struct StripePayment: Identifiable, Equatable {
-    let id: String
-    let amount: Int         // in cents/smallest unit
-    let currency: String
-    let description: String?
-    let createdAt: Date
-    let status: String      // "succeeded", "pending", "failed"
-
-    var amountFormatted: String { String(format: "%.2f", Double(amount) / 100.0) }
-    var isSuccess: Bool { status == "succeeded" }
-    var timeAgo: String {
-        let diff = Date().timeIntervalSince(createdAt)
-        if diff < 60    { return "just now" }
-        if diff < 3600  { return "\(Int(diff/60))m" }
-        if diff < 86400 { return "\(Int(diff/3600))h" }
-        return "\(Int(diff/86400))d"
-    }
-}
-
-// MARK: - Cal.com
-
-struct CalcomBooking: Identifiable, Equatable {
-    let id: Int
-    let title: String
-    let startTime: Date
-    let endTime: Date
-    let status: String
-    let attendeeName: String?
-    let attendeeEmail: String?
-    let attendeeNotes: String?
-
-    var isActive: Bool { status == "ACCEPTED" || status == "PENDING" }
-    var timeLabel: String {
-        let f = DateFormatter(); f.dateFormat = "HH:mm"; return f.string(from: startTime)
-    }
-    var dayKey: String {
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: startTime)
-        return "\(c.year!)-\(String(format: "%02d", c.month!))-\(String(format: "%02d", c.day!))"
-    }
-}
-
-// MARK: - Notion
-
-struct NotionPage: Identifiable {
-    let id: String
-    let title: String
-    let emoji: String?
-    let lastEditedAt: Date
-    let url: String
-
-    var timeAgo: String {
-        let diff = Date().timeIntervalSince(lastEditedAt)
-        if diff < 60 { return "now" }
-        if diff < 3600 { return "\(Int(diff/60))m" }
-        if diff < 86400 { return "\(Int(diff/3600))h" }
-        return "\(Int(diff/86400))d"
-    }
-}
 
 // MARK: - Chat
 

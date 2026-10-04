@@ -27,6 +27,7 @@ struct IslandContainer: View {
     @State private var cornerRadius: CGFloat = IslandConst.roundedCorner
     // topRadius > 0 → convex expanded corners; < 0 → concave ear cutouts
     @State private var islandTopRadius: CGFloat = 0
+    @State private var islandFlare: CGFloat = 0
     @State private var greetNotif: Bool = false
 
     private let openSpring = Animation.spring(response: 0.5, dampingFraction: 0.72)
@@ -55,7 +56,7 @@ struct IslandContainer: View {
         return ZStack(alignment: .topLeading) {
             // Black island shape
             IslandShape(width: islandWidth, height: islandHeight,
-                        cornerRadius: cornerRadius, topRadius: islandTopRadius)
+                        cornerRadius: cornerRadius, topRadius: islandTopRadius, flare: islandFlare)
                 .fill(Color.black)
 
             // Content
@@ -130,6 +131,7 @@ struct IslandContainer: View {
                 islandHeight     = (newMode == .expanded && state.view == .prompt) ? chatPromptHeight : h
                 cornerRadius     = cr
                 islandTopRadius  = tr
+                islandFlare      = newMode == .expanded ? IslandConst.expandedFlare : 0
             }
         }
         .onChange(of: state.view) { _, newView in
@@ -159,6 +161,7 @@ struct IslandContainer: View {
             islandHeight     = state.view == .prompt ? chatPromptHeight : h
             cornerRadius     = state.mode == .expanded ? IslandConst.expandedCorner : IslandConst.roundedCorner
             islandTopRadius  = 0
+            islandFlare      = state.mode == .expanded ? IslandConst.expandedFlare : 0
         }
         .onReceive(NotificationCenter.default.publisher(for: .botGreet)) { _ in
             greetNotif.toggle()
@@ -181,14 +184,18 @@ struct IslandShape: Shape {
     var height: CGFloat
     var cornerRadius: CGFloat   // bottom corners
     var topRadius: CGFloat      // see above
+    /// Oculot: concave fillets outside the top corners, so the unfolded island melts into the top
+    /// edge of the screen instead of meeting it at a right angle (0 = none).
+    var flare: CGFloat = 0
 
-    var animatableData: AnimatablePair<AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>, CGFloat> {
-        get { .init(.init(.init(width, height), cornerRadius), topRadius) }
+    var animatableData: AnimatablePair<AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
+        get { .init(.init(.init(width, height), cornerRadius), .init(topRadius, flare)) }
         set {
             width        = newValue.first.first.first
             height       = newValue.first.first.second
             cornerRadius = newValue.first.second
-            topRadius    = newValue.second
+            topRadius    = newValue.second.first
+            flare        = newValue.second.second
         }
     }
 
@@ -196,7 +203,21 @@ struct IslandShape: Shape {
         let cr = max(0, cornerRadius)
         var p  = Path()
 
-        if topRadius >= 0 {
+        if flare > 0.5 && topRadius == 0 {
+            // ── Flat top glued to the screen edge, concave fillets outside each top corner ──
+            let f = min(flare, height / 2)
+            p.move(to: CGPoint(x: -f, y: 0))
+            p.addLine(to: CGPoint(x: width + f, y: 0))
+            p.addArc(tangent1End: CGPoint(x: width, y: 0), tangent2End: CGPoint(x: width, y: f), radius: f)
+            p.addLine(to: CGPoint(x: width, y: height - cr))
+            p.addArc(center: CGPoint(x: width - cr, y: height - cr), radius: cr,
+                     startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+            p.addLine(to: CGPoint(x: cr, y: height))
+            p.addArc(center: CGPoint(x: cr, y: height - cr), radius: cr,
+                     startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+            p.addLine(to: CGPoint(x: 0, y: f))
+            p.addArc(tangent1End: CGPoint(x: 0, y: 0), tangent2End: CGPoint(x: -f, y: 0), radius: f)
+        } else if topRadius >= 0 {
             // ── Convex rounded top corners (expanded) ──────────────────────────
             let tr = min(topRadius, min(width / 2, height / 2))
             p.move(to: CGPoint(x: tr, y: 0))
@@ -437,7 +458,7 @@ struct IslandContentView: View {
                     // Views that fill available height instead of the fixed 98pt content frame:
                     // chat (prompt) is always flexible; mail is flexible only when active so
                     // it doesn't push the ZStack taller when inactive.
-                    let isTall = v == .prompt || (v == .mail && active) || (v == .terminal && active)
+                    let isTall = v == .prompt || (v == .terminal && active)
                     let anim: Animation = active
                         ? .spring(response: 0.4, dampingFraction: 0.8).delay(0.16)
                         : .easeIn(duration: 0.16)

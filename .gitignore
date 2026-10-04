@@ -24,3 +24,6 @@ _prive/
 
 # Builds locaux
 .build2/
+
+# Captures de référence locales (montrent le bureau)
+docs/reference/

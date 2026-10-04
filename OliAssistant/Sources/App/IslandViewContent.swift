@@ -18,7 +18,6 @@ struct IslandViewContent: View {
         case .upload:    UploadView(state: state)
         case .uploading: UploadingView(state: state)
         case .choose:    ChooseView(state: state)
-        case .mail:      MailView(state: state)
         case .prompt:    PromptView(state: state)
         case .terminal:  TerminalPanelView(state: state)
         case .searching: SearchingView(state: state)
@@ -933,10 +932,9 @@ struct ChooseView: View {
             VStack(alignment: .leading, spacing: 8) {
                 let fileName = state.droppedFile?.name ?? "file"
                 (Text(fileName).font(.system(size: 14, weight: .semibold)) + Text(" is ready.").font(.system(size: 14, weight: .semibold)))
-                Text("What do you want to do with it?").font(.system(size: 12.5)).foregroundColor(Color(hex: "#9398A1"))
+                Text("Qu’est-ce que j’en fais ?").font(.system(size: 12.5)).foregroundColor(Color(hex: "#9398A1"))
                 HStack(spacing: 8) {
-                    PrimaryButton("Ask a question") { state.view = .prompt }
-                    SecondaryButton("Send by email") { state.view = .mail }
+                    PrimaryButton("Poser une question") { state.view = .prompt }
                 }
             }
             .padding(.leading, 98)
@@ -945,188 +943,6 @@ struct ChooseView: View {
     }
 }
 
-// MARK: - Mail
-
-struct MailView: View {
-    @ObservedObject var state: AppState
-    @State private var to: String = ""
-    @State private var subject: String = ""
-    @State private var bodyText: String = ""
-    @State private var statusMsg: String = ""
-    @State private var isSending = false
-
-    var body: some View {
-        ZStack(alignment: .leading) {
-            CardBackground(wash: nil)
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Text("New email").font(.system(size: 12, weight: .semibold))
-                    if let name = state.droppedFile?.name {
-                        Text("with").font(.system(size: 12)).foregroundColor(Color(hex: "#8E939C"))
-                        Text(name).font(.system(size: 12)).foregroundColor(Color(hex: "#8E939C"))
-                            .lineLimit(1).truncationMode(.middle)
-                    }
-                }
-
-                MailField(label: "To", placeholder: "address@example.com", text: $to)
-                MailField(label: "Subject", placeholder: state.droppedFile?.name ?? "Subject", text: $subject)
-
-                // Body — TextEditor scrolls internally when text overflows
-                TextEditor(text: $bodyText)
-                    .scrollContentBackground(.hidden)
-                    .font(.system(size: 12.5))
-                    .foregroundColor(Color(hex: "#F5F6F8"))
-                    .frame(height: 44)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-
-                if !statusMsg.isEmpty {
-                    Text(statusMsg).font(.system(size: 11)).foregroundColor(Color(hex: "#FF8D97"))
-                }
-
-                HStack(spacing: 8) {
-                    PrimaryButton(isSending ? "Sending…" : "Send") {
-                        guard !isSending else { return }
-                        sendMail()
-                    }
-                    SecondaryButton("Cancel") { state.view = .choose }
-                }
-            }
-            .padding(.leading, 92)
-            .padding(.trailing, 18)
-            .padding(.vertical, 8)
-        }
-        .onAppear { subject = state.droppedFile?.name ?? "" }
-    }
-
-    private func sendMail() {
-        guard !to.isEmpty else { statusMsg = "Missing recipient."; return }
-        let subj = subject.isEmpty ? (state.droppedFile?.name ?? "File") : subject
-
-        // Prefer Resend if API key + sender address are configured
-        let apiKey  = KeychainStore.shared.get("resend-api-key")
-        let fromAddr = KeychainStore.shared.get("resend-from")
-
-        if let apiKey, let fromAddr {
-            isSending = true
-            statusMsg = ""
-            let recipient = to
-            let msgBody  = bodyText
-            let fileURL  = state.droppedFile?.url
-            Task {
-                let ok = await sendViaResend(apiKey: apiKey, from: fromAddr,
-                                              to: recipient, subject: subj,
-                                              body: msgBody, fileURL: fileURL)
-                await MainActor.run {
-                    isSending = false
-                    if ok { onSuccess(recipient: recipient) }
-                    else  { statusMsg = "Resend error — check API key & sender." }
-                }
-            }
-        } else if apiKey != nil && fromAddr == nil {
-            // API key set but no sender — guide user instead of silent fallback
-            statusMsg = "Set sender address in Settings."
-        } else {
-            // No Resend — fallback to Mail
-            sendViaAppleMail(to: to, subject: subj)
-        }
-    }
-
-    private func sendViaResend(apiKey: String, from: String, to: String,
-                                subject: String, body: String, fileURL: URL?) async -> Bool {
-        guard let url = URL(string: "https://api.resend.com/emails") else { return false }
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-        var payload: [String: Any] = [
-            "from": from,
-            "to": [to],
-            "subject": subject,
-            "text": body.isEmpty ? " " : body
-        ]
-        if let fileURL, let data = try? Data(contentsOf: fileURL) {
-            payload["attachments"] = [[
-                "filename": fileURL.lastPathComponent,
-                "content": data.base64EncodedString()
-            ]]
-        }
-        guard let httpBody = try? JSONSerialization.data(withJSONObject: payload) else { return false }
-        request.httpBody = httpBody
-        guard let (_, response) = try? await URLSession.shared.data(for: request) else { return false }
-        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if code == 200 || code == 201 { return true }
-        print("[Resend] HTTP \(code)")
-        return false
-    }
-
-    private func sendViaAppleMail(to: String, subject: String) {
-        #if APPSTORE
-        // App Store: no AppleScript — use NSSharingService to compose (user sends manually)
-        guard let service = NSSharingService(named: .composeEmail) else {
-            statusMsg = "Mail not available."
-            return
-        }
-        var items: [Any] = [bodyText.isEmpty ? " " : bodyText]
-        if let url = state.droppedFile?.url,
-           FileManager.default.fileExists(atPath: url.path) {
-            items.append(url)
-        }
-        service.recipients = [to]
-        service.subject = subject
-        service.perform(withItems: items)
-        onSuccess(recipient: to)
-        #else
-        func asEscape(_ s: String) -> String {
-            s.replacingOccurrences(of: "\\", with: "\\\\")
-             .replacingOccurrences(of: "\"", with: "\\\"")
-        }
-
-        let bodyLines = bodyText.isEmpty ? [""] : bodyText.components(separatedBy: "\n")
-        let bodyExpr = bodyLines.map { "\"\(asEscape($0))\"" }.joined(separator: " & linefeed & ")
-            + " & return & return"
-
-        let attachBlock: String
-        if let url = state.droppedFile?.url,
-           FileManager.default.fileExists(atPath: url.path) {
-            let escapedPath = asEscape(url.path)
-            attachBlock = "make new attachment with properties {file name:(POSIX file \"\(escapedPath)\")} at after the last paragraph of content"
-        } else {
-            attachBlock = ""
-        }
-
-        let script = """
-        tell application "Mail"
-            set m to make new outgoing message with properties {subject:"\(asEscape(subject))", visible:false}
-            set content of m to \(bodyExpr)
-            tell m
-                make new to recipient at end of to recipients with properties {address:"\(asEscape(to))"}
-                \(attachBlock)
-            end tell
-            delay 1
-            send m
-        end tell
-        """
-        var err: NSDictionary?
-        NSAppleScript(source: script)?.executeAndReturnError(&err)
-        if err == nil { onSuccess(recipient: to) }
-        else { statusMsg = "Mail error: \(err?["NSAppleScriptErrorMessage"] as? String ?? "unknown")" }
-        #endif
-    }
-
-    private func onSuccess(recipient: String) {
-        SoundEngine.shared.play("send")
-        NotificationCenter.default.post(name: .triggerEmote, object: BotEmote.wink)
-        state.noteMessage = "Email sent to \(recipient)."
-        state.view = .note
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-            NotificationCenter.default.post(name: .islandCollapse, object: nil)
-        }
-    }
-}
 
 // MARK: - Prompt (chat)
 
@@ -1717,11 +1533,6 @@ struct IntegrationCardView: View {
         task.id == "integration_vercel" && !appState.vercelDeployments.isEmpty
     }
 
-    // Resend with recent emails
-    private var resendHasData: Bool {
-        task.id == "integration_resend" && !appState.resendEmails.isEmpty
-    }
-
     // GitHub with stats or pulse loaded
     private var githubHasData: Bool {
         task.id == "integration_github" && (appState.githubPulse != nil || appState.githubStats != nil)
@@ -1730,21 +1541,6 @@ struct IntegrationCardView: View {
     // GitHub with pulse loaded (richer card)
     private var githubHasPulse: Bool {
         task.id == "integration_github" && appState.githubPulse != nil
-    }
-
-    // Stripe: show card as soon as first poll completes (balance OR payments)
-    private var stripeHasData: Bool {
-        task.id == "integration_stripe" && appState.stripeLoaded
-    }
-
-    // Cal.com: show calendar as soon as first poll completes
-    private var calcomHasData: Bool {
-        task.id == "integration_calcom" && appState.calcomLoaded
-    }
-
-    // Notion: show pages as soon as first poll completes
-    private var notionHasData: Bool {
-        task.id == "integration_notion" && appState.notionLoaded
     }
 
     // Apple Music: show card when a track is loaded (playing or paused) or automation is denied
@@ -1766,10 +1562,6 @@ struct IntegrationCardView: View {
         }
         #endif
         if PillCatalog.definition(for: task.id)?.comingSoon == true { return Color(hex: "#6B7079") }
-        let svcErr = task.id == "integration_stripe" ? appState.stripeError
-                   : task.id == "integration_calcom"  ? appState.calcomError
-                   : nil
-        if svcErr != nil { return Color(hex: "#F4505E") }
         return isConfigured ? Color(hex: "#22C55E") : Color(hex: "#F4505E")
     }
 
@@ -1785,10 +1577,6 @@ struct IntegrationCardView: View {
         if task.id == "integration_sites" {
             return isConfigured ? "\(SitesPoller.targets.count) sites · vérification en cours…" : "Aucun site"
         }
-        let svcErr = task.id == "integration_stripe" ? appState.stripeError
-                   : task.id == "integration_calcom"  ? appState.calcomError
-                   : nil
-        if let err = svcErr { return err }
         let isHooks = task.id == "agent_gemini" || task.id == "agent_antigravity"
         let isAI    = ChatProvider(pillID: task.id) != nil
         if isConfigured {
@@ -1820,12 +1608,7 @@ struct IntegrationCardView: View {
     }
 
     var body: some View {
-        if showingDetail && n8nHasActivity {
-            N8nDetailView(task: task) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { showingDetail = false }
-            }
-            .transition(.opacity)
-        } else if showingDetail && espaceHasData {
+        if showingDetail && espaceHasData {
             EspaceDetailView(client: appState.espaceClients[min(espaceSelected, appState.espaceClients.count - 1)]) {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { showingDetail = false }
             }
@@ -1871,9 +1654,6 @@ struct IntegrationCardView: View {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) { showingDetail = true }
             })
             .transition(.opacity)
-        } else if resendHasData {
-            ResendCardView(emails: appState.resendEmails, total: appState.resendTotal)
-                .transition(.opacity)
         } else if showingDetail && githubHasPulse {
             GitHubDetailView(
                 section: githubDetailSection,
@@ -1898,15 +1678,6 @@ struct IntegrationCardView: View {
             .transition(.opacity)
         } else if githubHasData {
             GitHubStatsCardView(stats: appState.githubStats!)
-                .transition(.opacity)
-        } else if stripeHasData {
-            StripeCardView()
-                .transition(.opacity)
-        } else if calcomHasData {
-            CalcomCardView()
-                .transition(.opacity)
-        } else if notionHasData {
-            NotionCardView()
                 .transition(.opacity)
         } else if musicIsActive {
             #if !APPSTORE
@@ -2062,18 +1833,6 @@ struct IntegrationCardView: View {
                         Button("Open \(task.name)") { NSWorkspace.shared.open(url) }
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(Color(hex: task.color).opacity(0.85))
-                            .buttonStyle(.plain)
-                    }
-                    if task.id == "integration_stripe" && isConfigured {
-                        Button("Refresh") { Task { @MainActor in StripePoller.shared.pollNow() } }
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(hex: "#0570DE").opacity(0.85))
-                            .buttonStyle(.plain)
-                    }
-                    if task.id == "integration_calcom" && isConfigured {
-                        Button("Refresh") { Task { @MainActor in CalcomPoller.shared.pollNow() } }
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(hex: "#C9956A").opacity(0.85))
                             .buttonStyle(.plain)
                     }
                     // Settings button: shown when not configured, except cursor/codex and music
@@ -2289,102 +2048,6 @@ struct VercelDetailView: View {
     }
 }
 
-// MARK: - Resend Card View
-
-struct ResendPulseDot: View {
-    @State private var on = false
-    var body: some View {
-        Circle()
-            .fill(Color(hex: "#22C55E"))
-            .frame(width: 4, height: 4)
-            .opacity(on ? 1 : 0.2)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { on = true }
-            }
-    }
-}
-
-struct ResendCardView: View {
-    let emails: [ResendEmail]
-    let total: Int?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(Color(hex: "#22C55E"))
-                    .frame(width: 7, height: 7)
-                Text("Resend")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color(hex: "#F5F6F8"))
-                Text("Emails")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "#8E939C"))
-                if let total {
-                    ResendPulseDot()
-                    Text("\(total)")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color(hex: "#C5C8CD"))
-                        .monospacedDigit()
-                }
-            }
-            .padding(.top, 6)
-            .padding(.leading, 108)
-            .padding(.trailing, 36)
-
-            // Email rows — first is highlighted, rest plain (same structure as Vercel list)
-            VStack(alignment: .leading, spacing: 3) {
-                if let first = emails.first {
-                    let accent = Color(hex: first.isDelivered ? "#22C55E" : "#F4505E")
-                    HStack(spacing: 5) {
-                        Circle().fill(accent).frame(width: 5, height: 5)
-                        Text(first.recipientShort)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(hex: "#C5C8CD"))
-                            .lineLimit(1).truncationMode(.tail)
-                            .layoutPriority(1)
-                        Text(first.timeAgo)
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(hex: "#6B7079"))
-                        if !first.subject.isEmpty {
-                            Text(first.subject)
-                                .font(.system(size: 10))
-                                .foregroundColor(Color(hex: "#4D5159"))
-                                .lineLimit(1).truncationMode(.tail)
-                        }
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(accent.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
-                }
-
-                ForEach(Array(emails.dropFirst().prefix(2))) { email in
-                    let accent = Color(hex: email.isDelivered ? "#22C55E" : "#F4505E")
-                    HStack(spacing: 5) {
-                        Circle().fill(accent).frame(width: 5, height: 5)
-                        Text(email.recipientShort)
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(Color(hex: "#9398A1"))
-                            .lineLimit(1).truncationMode(.tail)
-                            .layoutPriority(1)
-                        Text(email.timeAgo)
-                            .font(.system(size: 10))
-                            .foregroundColor(Color(hex: "#6B7079"))
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(.top, 5)
-            .padding(.leading, 108)
-            .padding(.trailing, 12)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(.top, 4)
-    }
-}
 
 // MARK: - GitHub Pulse Card View
 
@@ -3004,502 +2667,6 @@ private struct StatRow: View {
     }
 }
 
-// MARK: - Stripe Card View
-
-struct StripeCardView: View {
-    @ObservedObject private var appState = AppState.shared
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(Color(hex: "#0570DE"))
-                    .frame(width: 7, height: 7)
-                Text("Stripe")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color(hex: "#F5F6F8"))
-                Text("Payments")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "#8E939C"))
-            }
-            .padding(.top, 6)
-            .padding(.leading, 108)
-            .padding(.trailing, 36)
-
-            // Balance
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(balanceFormatted)
-                    .font(.system(size: 20, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color(hex: "#F5F6F8"))
-                    .contentTransition(.numericText(countsDown: false))
-                    .animation(.easeOut(duration: 1.2), value: appState.stripeDisplayBalance)
-                Text(appState.stripeCurrency.uppercased())
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(Color(hex: "#6B7079"))
-                    .padding(.bottom, 1)
-            }
-            .padding(.leading, 108)
-            .padding(.top, 4)
-
-            // Payment rows (animated list)
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(appState.stripePayments) { payment in
-                    StripePaymentRow(payment: payment)
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .top).combined(with: .opacity),
-                            removal:   .move(edge: .bottom).combined(with: .opacity)
-                        ))
-                }
-            }
-            .animation(.spring(response: 0.38, dampingFraction: 0.82),
-                        value: appState.stripePayments.map(\.id))
-            .padding(.leading, 108)
-            .padding(.trailing, 12)
-            .padding(.top, 4)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .padding(.top, 4)
-    }
-
-    private var balanceFormatted: String {
-        String(format: "%.2f", Double(appState.stripeDisplayBalance) / 100.0)
-    }
-}
-
-private struct StripePaymentRow: View {
-    let payment: StripePayment
-
-    var body: some View {
-        let accent = payment.isSuccess ? Color(hex: "#22C55E") : Color(hex: "#F4505E")
-        HStack(spacing: 5) {
-            Circle().fill(accent).frame(width: 5, height: 5)
-            Text(payment.description ?? "Payment")
-                .font(.system(size: 11))
-                .foregroundColor(Color(hex: "#C5C8CD"))
-                .lineLimit(1).truncationMode(.tail)
-                .layoutPriority(1)
-            Spacer(minLength: 4)
-            Text("+\(payment.amountFormatted)")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundColor(Color(hex: "#22C55E"))
-                .fixedSize()
-            Text(payment.timeAgo)
-                .font(.system(size: 10))
-                .foregroundColor(Color(hex: "#6B7079"))
-                .fixedSize()
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-// MARK: - Cal.com Card View
-
-struct CalcomCardView: View {
-    @ObservedObject private var appState = AppState.shared
-    @State private var selectedDate: Date? = nil
-    @State private var selectedBooking: CalcomBooking? = nil
-    @State private var displayMonth: Date = Date()
-    @State private var displayHalf: Int = 1  // 1 = first half, 2 = second half
-
-    var body: some View {
-        Group {
-            if let booking = selectedBooking {
-                CalcomBookingDetailView(booking: booking) {
-                    withAnimation(.easeOut(duration: 0.2)) { selectedBooking = nil }
-                }
-            } else if let date = selectedDate {
-                CalcomDayView(
-                    date: date,
-                    bookings: bookingsFor(date),
-                    onSelect: { b in withAnimation(.easeOut(duration: 0.2)) { selectedBooking = b } },
-                    onBack:   { withAnimation(.easeOut(duration: 0.2)) { selectedDate = nil } }
-                )
-            } else {
-                CalcomCalendarView(
-                    displayMonth: $displayMonth,
-                    displayHalf: $displayHalf,
-                    bookings: appState.calcomBookings,
-                    onSelect: { d in withAnimation(.easeOut(duration: 0.2)) { selectedDate = d } }
-                )
-            }
-        }
-        .onChange(of: appState.focusId) { _, _ in
-            selectedDate = nil; selectedBooking = nil; displayHalf = 1
-        }
-    }
-
-    private func bookingsFor(_ date: Date) -> [CalcomBooking] {
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: date)
-        let key = "\(c.year!)-\(String(format: "%02d", c.month!))-\(String(format: "%02d", c.day!))"
-        return appState.calcomBookings.filter { $0.dayKey == key }
-                                      .sorted { $0.startTime < $1.startTime }
-    }
-}
-
-struct CalcomCalendarView: View {
-    @Binding var displayMonth: Date
-    @Binding var displayHalf: Int
-    let bookings: [CalcomBooking]
-    let onSelect: (Date) -> Void
-
-    private let cal = Calendar.current
-
-    private var navLabel: String {
-        let f = DateFormatter(); f.dateFormat = "MMMM yyyy"
-        return "\(f.string(from: displayMonth)) Q\(displayHalf)"
-    }
-
-    // 7 consecutive days per row, day 1 always at far left — no weekday alignment
-    private var allWeeks: [[Date?]] {
-        let comps = cal.dateComponents([.year, .month], from: displayMonth)
-        let monthStart = cal.date(from: comps)!
-        let daysInMonth = cal.range(of: .day, in: .month, for: displayMonth)!.count
-        var result: [[Date?]] = []
-        var chunk: [Date?] = []
-        for i in 0..<daysInMonth {
-            chunk.append(cal.date(byAdding: .day, value: i, to: monthStart)!)
-            if chunk.count == 7 { result.append(chunk); chunk = [] }
-        }
-        if !chunk.isEmpty {
-            while chunk.count < 7 { chunk.append(nil) }
-            result.append(chunk)
-        }
-        return result
-    }
-
-    // Visible weeks for current half
-    private var visibleWeeks: [[Date?]] {
-        let all = allWeeks
-        let splitAt = 2  // always 2 weeks per Q
-        return displayHalf == 1 ? Array(all[0..<splitAt]) : Array(all[splitAt...])
-    }
-
-    private func hasBookings(_ d: Date) -> Bool {
-        let c = cal.dateComponents([.year, .month, .day], from: d)
-        let key = "\(c.year!)-\(String(format: "%02d", c.month!))-\(String(format: "%02d", c.day!))"
-        return bookings.contains { $0.dayKey == key }
-    }
-
-    private func goBack() {
-        if displayHalf == 1 {
-            displayMonth = cal.date(byAdding: .month, value: -1, to: displayMonth) ?? displayMonth
-            displayHalf = 2
-        } else {
-            displayHalf = 1
-        }
-    }
-
-    private func goForward() {
-        if displayHalf == 1 {
-            displayHalf = 2
-        } else {
-            displayMonth = cal.date(byAdding: .month, value: 1, to: displayMonth) ?? displayMonth
-            displayHalf = 1
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Circle().fill(Color(hex: "#C9956A")).frame(width: 7, height: 7)
-                Text("Cal.com").font(.system(size: 12, weight: .semibold)).foregroundColor(Color(hex: "#F5F6F8"))
-                Text("Schedule").font(.system(size: 11)).foregroundColor(Color(hex: "#8E939C"))
-            }
-            .padding(.top, 6).padding(.leading, 108).padding(.trailing, 36)
-
-            HStack(spacing: 0) {
-                Button { goBack() } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 8, weight: .semibold))
-                        .foregroundColor(Color(hex: "#6B7079")).frame(width: 18, height: 16)
-                }.buttonStyle(.plain)
-                Text(navLabel).font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(Color(hex: "#C5C8CD")).frame(maxWidth: .infinity)
-                Button { goForward() } label: {
-                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
-                        .foregroundColor(Color(hex: "#6B7079")).frame(width: 18, height: 16)
-                }.buttonStyle(.plain)
-            }
-            .padding(.leading, 108).padding(.trailing, 12).padding(.top, 2)
-
-            VStack(spacing: 1) {
-                ForEach(visibleWeeks.indices, id: \.self) { i in
-                    CalcomWeekRow(week: visibleWeeks[i], hasBookings: hasBookings,
-                                  isToday: cal.isDateInToday, onSelect: onSelect)
-                }
-            }
-            .padding(.leading, 108).padding(.trailing, 12).padding(.top, 2)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading).padding(.top, 4)
-        .transition(.opacity)
-    }
-}
-
-private struct CalcomWeekRow: View {
-    let week: [Date?]
-    let hasBookings: (Date) -> Bool
-    let isToday: (Date) -> Bool
-    let onSelect: (Date) -> Void
-
-    private var weekLabel: String {
-        guard let first = week.compactMap({ $0 }).first else { return "" }
-        let f = DateFormatter(); f.dateFormat = "dd/MM"
-        return f.string(from: first)
-    }
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Text(weekLabel).font(.system(size: 7)).foregroundColor(Color(hex: "#4B5563"))
-                .frame(width: 26, alignment: .leading)
-            ForEach(0..<7, id: \.self) { i in
-                if let day = week[i] {
-                    CalcomDayCell(day: day, hasEvents: hasBookings(day), isToday: isToday(day))
-                        .contentShape(Rectangle()).onTapGesture { onSelect(day) }.frame(maxWidth: .infinity)
-                } else {
-                    Color.clear.frame(maxWidth: .infinity).frame(height: 18)
-                }
-            }
-        }
-    }
-}
-
-private struct CalcomDayCell: View {
-    let day: Date
-    let hasEvents: Bool
-    let isToday: Bool
-    var body: some View {
-        VStack(spacing: 1) {
-            Text("\(Calendar.current.component(.day, from: day))")
-                .font(.system(size: 9, weight: isToday ? .bold : .regular))
-                .foregroundColor(isToday ? .white : Color(hex: "#9398A1"))
-                .frame(width: 13, height: 13)
-                .background(isToday ? Color(hex: "#C9956A").opacity(0.55) : Color.clear)
-                .clipShape(Circle())
-            Circle().fill(hasEvents ? Color(hex: "#C9956A") : Color.clear).frame(width: 3, height: 3)
-        }
-        .frame(height: 18)
-    }
-}
-
-struct CalcomDayView: View {
-    let date: Date
-    let bookings: [CalcomBooking]
-    let onSelect: (CalcomBooking) -> Void
-    let onBack: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 4) {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left").font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color(hex: "#6B7079")).frame(width: 22, height: 22).contentShape(Rectangle())
-                }.buttonStyle(.plain).padding(.leading, 108)
-                Text(dayLabel).font(.system(size: 11, weight: .semibold)).foregroundColor(Color(hex: "#C5C8CD"))
-                Spacer()
-            }
-            .padding(.top, 6).padding(.trailing, 12)
-
-            if bookings.isEmpty {
-                Text("No calls scheduled").font(.system(size: 11)).foregroundColor(Color(hex: "#6B7079"))
-                    .padding(.leading, 116).padding(.top, 8)
-            } else {
-                VStack(alignment: .leading, spacing: 3) {
-                    ForEach(bookings) { b in
-                        Button { onSelect(b) } label: {
-                            HStack(spacing: 6) {
-                                Circle().fill(Color(hex: "#C9956A")).frame(width: 4, height: 4)
-                                Text(b.timeLabel)
-                                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                    .foregroundColor(Color(hex: "#C9956A")).fixedSize()
-                                Text(b.title).font(.system(size: 11)).foregroundColor(Color(hex: "#C5C8CD"))
-                                    .lineLimit(1).truncationMode(.tail).layoutPriority(1)
-                                Spacer(minLength: 2)
-                                Image(systemName: "chevron.right").font(.system(size: 8))
-                                    .foregroundColor(Color(hex: "#4B5563"))
-                            }
-                            .padding(.horizontal, 6).padding(.vertical, 3)
-                            .background(Color(hex: "#C9956A").opacity(0.06))
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-                        }.buttonStyle(.plain)
-                    }
-                }
-                .padding(.leading, 108).padding(.trailing, 12).padding(.top, 5)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading).padding(.top, 4)
-        .transition(.opacity)
-    }
-    private var dayLabel: String {
-        let f = DateFormatter(); f.dateFormat = "EEEE d MMMM"; return f.string(from: date)
-    }
-}
-
-struct CalcomBookingDetailView: View {
-    let booking: CalcomBooking
-    let onBack: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 4) {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left").font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color(hex: "#6B7079")).frame(width: 22, height: 22).contentShape(Rectangle())
-                }.buttonStyle(.plain).padding(.leading, 108)
-                Text(booking.timeLabel)
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
-                    .foregroundColor(Color(hex: "#C9956A"))
-                Spacer()
-            }
-            .padding(.top, 6).padding(.trailing, 12)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text(booking.title).font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(Color(hex: "#F5F6F8")).lineLimit(1)
-                if let name = booking.attendeeName, !name.isEmpty {
-                    CalcomDetailRow(icon: "person.fill", text: name, size: 11)
-                }
-                if let email = booking.attendeeEmail, !email.isEmpty {
-                    CalcomDetailRow(icon: "envelope.fill", text: email, size: 10, truncate: true)
-                }
-                if let notes = booking.attendeeNotes, !notes.isEmpty {
-                    CalcomDetailRow(icon: "note.text", text: notes, size: 10, lines: 2)
-                }
-            }
-            .padding(.leading, 114).padding(.trailing, 12).padding(.top, 5)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading).padding(.top, 4)
-        .transition(.opacity)
-    }
-}
-
-private struct CalcomDetailRow: View {
-    let icon: String
-    let text: String
-    var size: CGFloat = 11
-    var truncate: Bool = false
-    var lines: Int = 1
-    var body: some View {
-        HStack(alignment: .top, spacing: 4) {
-            Image(systemName: icon).font(.system(size: 9)).foregroundColor(Color(hex: "#6B7079")).frame(width: 10)
-            Text(text).font(.system(size: size)).foregroundColor(Color(hex: "#9398A1"))
-                .lineLimit(lines).truncationMode(truncate ? .middle : .tail)
-        }
-    }
-}
-
-// MARK: - Notion Card View
-
-struct NotionCardView: View {
-    @ObservedObject private var appState = AppState.shared
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Circle().fill(Color(hex: "#E8E8E8")).frame(width: 7, height: 7)
-                Text("Notion").font(.system(size: 12, weight: .semibold)).foregroundColor(Color(hex: "#F5F6F8"))
-                Text("Recent").font(.system(size: 11)).foregroundColor(Color(hex: "#8E939C"))
-            }
-            .padding(.top, 6).padding(.leading, 108).padding(.trailing, 36)
-
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(appState.notionPages.prefix(3)) { page in
-                    Button {
-                        if let url = safeWebURL(page.url) { NSWorkspace.shared.open(url) }
-                    } label: {
-                        HStack(spacing: 6) {
-                            if let emoji = page.emoji {
-                                Text(emoji).font(.system(size: 10)).frame(width: 14)
-                            } else {
-                                Image(systemName: "doc.text").font(.system(size: 9))
-                                    .foregroundColor(Color(hex: "#6B7079")).frame(width: 14)
-                            }
-                            Text(page.title).font(.system(size: 11))
-                                .foregroundColor(Color(hex: "#C5C8CD"))
-                                .lineLimit(1).truncationMode(.tail).layoutPriority(1)
-                            Spacer(minLength: 4)
-                            Text(page.timeAgo).font(.system(size: 9))
-                                .foregroundColor(Color(hex: "#4B5563"))
-                        }
-                        .padding(.horizontal, 6).padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.leading, 102).padding(.trailing, 12).padding(.top, 5)
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading).padding(.top, 4)
-        .transition(.opacity)
-    }
-}
-
-// MARK: - n8n Execution Detail View
-
-struct N8nDetailView: View {
-    let task: AgentTask
-    let onClose: () -> Void
-
-    private var success: Bool  { task.state == .finished }
-    private var accent: Color  { success ? Color(hex: "#22C55E") : Color(hex: "#F4505E") }
-    private var statusLabel: String { success ? "Success" : "Failed" }
-    private var detail: String? { task.steps.dropFirst().first }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-
-            // Header: back button + workflow name + status badge
-            HStack(spacing: 7) {
-                Button(action: onClose) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(Color(hex: "#6B7079"))
-                        .frame(width: 28, height: 28)   // large hit area
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-
-                Circle().fill(accent).frame(width: 6, height: 6)
-
-                Text(task.steps.first ?? "Workflow")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(Color(hex: "#F5F6F8"))
-                    .lineLimit(1).truncationMode(.middle)
-                    .layoutPriority(1)
-
-                Spacer(minLength: 2)
-
-                Text(statusLabel)
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(accent)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(accent.opacity(0.14))
-                    .clipShape(Capsule())
-            }
-
-            // Detail body — monospaced, selectable
-            if let detail {
-                ScrollView(.vertical, showsIndicators: false) {
-                    Text(detail)
-                        .font(.system(size: 10.5, design: .monospaced))
-                        .foregroundColor(Color(hex: "#9398A1"))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .lineSpacing(2)
-                        .textSelection(.enabled)
-                }
-                .frame(maxHeight: 88)
-            } else {
-                Text(success ? "Completed successfully." : "No error details available.")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(hex: "#6B7079"))
-            }
-        }
-        .padding(.top, 8)
-        .padding(.leading, 108)
-        .padding(.trailing, 12)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .contentShape(Rectangle())   // prevent taps falling through transparent areas
-    }
-}
 
 // MARK: - Ticker (overview scrolling task steps) V2
 
@@ -4535,27 +3702,6 @@ struct ContextChip: View {
     }
 }
 
-struct MailField: View {
-    let label: String
-    let placeholder: String
-    @Binding var text: String
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(label)
-                .font(.system(size: 12.5))
-                .foregroundColor(Color(hex: "#80858E"))
-                .frame(width: 44, alignment: .leading)
-            TextField(placeholder, text: $text)
-                .textFieldStyle(.plain)
-                .font(.system(size: 12.5))
-                .foregroundColor(Color(hex: "#F5F6F8"))
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-}
 
 struct ShimmeringText: View {
     let text: String

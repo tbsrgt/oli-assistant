@@ -65,13 +65,8 @@ final class KeychainStore: @unchecked Sendable {
         "anthropic-api-key",
         "google-api-key",
         "openai-api-key",
-        "resend-api-key", "resend-from",
-        "n8n-url", "n8n-api-key",
         "vercel-token",
         "github-token",
-        "stripe-api-key",
-        "calcom-api-key",
-        "notion-api-key",
         // Oculot
         "espace-token", "espace-url",
         "agenda-ics-url", "pagespeed-api-key", "instagram-token", "instagram-user-id",

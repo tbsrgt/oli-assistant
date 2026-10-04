@@ -101,7 +101,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         islandController?.showWindow(nil)
         islandController?.fsm.launch()
         HookServer.shared.start()
-        N8nPoller.shared.start()
         VercelPoller.shared.start()
         EspacePoller.shared.start()
         SocialPoller.shared.start()
@@ -110,11 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         BriefingCenter.shared.installDebugTrigger()
         #endif
         SitesPoller.shared.start()
-        ResendPoller.shared.start()
         GithubPoller.shared.start()
-        StripePoller.shared.start()
-        CalcomPoller.shared.start()
-        NotionPoller.shared.start()
         NotificationCenter.default.addObserver(self, selector: #selector(openSettingsFromNotification(_:)),
                                                name: .openFullSettings, object: nil)
         // After the greeting ends, fly Oli back to the desktop if it was there at last quit
