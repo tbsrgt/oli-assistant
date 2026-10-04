@@ -28,10 +28,17 @@ struct IslandContainer: View {
     // topRadius > 0 → convex expanded corners; < 0 → concave ear cutouts
     @State private var islandTopRadius: CGFloat = 0
     @State private var islandFlare: CGFloat = 0
+    @State private var islandWave: CGFloat = 0
     @State private var greetNotif: Bool = false
 
     private let openSpring = Animation.spring(response: 0.5, dampingFraction: 0.72)
     private let closeEase  = Animation.timingCurve(0.45, 0, 0.2, 1, duration: 0.34)
+    // Oculot: the island pours out of the notch like a wave — width first, then the drop,
+    // whose middle leads and ripples once before settling flat.
+    private let pourWidth  = Animation.spring(response: 0.36, dampingFraction: 0.86)
+    private let pourHeight = Animation.spring(response: 0.56, dampingFraction: 0.76).delay(0.04)
+    private let pourWave   = Animation.spring(response: 0.62, dampingFraction: 0.42).delay(0.06)
+    private let retract    = Animation.spring(response: 0.38, dampingFraction: 1.0)
 
     private var chatPromptHeight: CGFloat {
         let base: CGFloat = 240
@@ -56,7 +63,7 @@ struct IslandContainer: View {
         return ZStack(alignment: .topLeading) {
             // Black island shape
             IslandShape(width: islandWidth, height: islandHeight,
-                        cornerRadius: cornerRadius, topRadius: islandTopRadius, flare: islandFlare)
+                        cornerRadius: cornerRadius, topRadius: islandTopRadius, flare: islandFlare, wave: islandWave)
                 .fill(Color.black)
 
             // Content
@@ -87,8 +94,12 @@ struct IslandContainer: View {
                         .frame(width: islandWidth, height: islandHeight - earOffset)
                         .offset(y: earOffset)
                         .clipShape(IslandShape(width: islandWidth, height: islandHeight,
-                                              cornerRadius: cornerRadius, topRadius: islandTopRadius))
-                        .transition(.opacity)
+                                              cornerRadius: cornerRadius, topRadius: islandTopRadius, wave: islandWave))
+                        // Slides down from the notch as the wave pours, fades quickly when folding
+                        .transition(.asymmetric(
+                            insertion: .offset(y: -16).combined(with: .opacity)
+                                .animation(.spring(response: 0.5, dampingFraction: 0.85).delay(0.1)),
+                            removal: .opacity.animation(.easeIn(duration: 0.12))))
                 }
             }
 
@@ -126,12 +137,40 @@ struct IslandContainer: View {
                                     nw: state.notchWidth, nh: state.notchHeight)
             let cr  = newMode == .expanded ? IslandConst.expandedCorner : IslandConst.roundedCorner
             let tr: CGFloat = 0
-            withAnimation(anim) {
-                islandWidth      = w
-                islandHeight     = (newMode == .expanded && state.view == .prompt) ? chatPromptHeight : h
-                cornerRadius     = cr
-                islandTopRadius  = tr
-                islandFlare      = IslandConst.flare(for: newMode)
+            let targetH = (newMode == .expanded && state.view == .prompt) ? chatPromptHeight : h
+            if newMode == .expanded {
+                // Pour out: the bottom edge starts as a wave (middle leading), width opens fast,
+                // the height drops, then the wave ripples once and settles flat.
+                islandWave = targetH * 0.32
+                withAnimation(pourWidth) {
+                    islandWidth  = w
+                    islandFlare  = IslandConst.flare(for: newMode)
+                    islandTopRadius = tr
+                }
+                withAnimation(pourHeight) {
+                    islandHeight = targetH
+                    cornerRadius = cr
+                }
+                withAnimation(pourWave) { islandWave = 0 }
+            } else if oldMode == .expanded {
+                // Retract: the sides rise first, the middle follows, then everything slips back in.
+                withAnimation(.easeOut(duration: 0.14)) { islandWave = islandHeight * 0.22 }
+                withAnimation(retract.delay(0.04)) {
+                    islandWidth      = w
+                    islandHeight     = targetH
+                    cornerRadius     = cr
+                    islandTopRadius  = tr
+                    islandFlare      = IslandConst.flare(for: newMode)
+                }
+                withAnimation(retract.delay(0.12)) { islandWave = 0 }
+            } else {
+                withAnimation(anim) {
+                    islandWidth      = w
+                    islandHeight     = targetH
+                    cornerRadius     = cr
+                    islandTopRadius  = tr
+                    islandFlare      = IslandConst.flare(for: newMode)
+                }
             }
         }
         .onChange(of: state.view) { _, newView in
@@ -184,85 +223,83 @@ struct IslandShape: Shape {
     var height: CGFloat
     var cornerRadius: CGFloat   // bottom corners
     var topRadius: CGFloat      // see above
-    /// Oculot: concave fillets outside the top corners, so the unfolded island melts into the top
-    /// edge of the screen instead of meeting it at a right angle (0 = none).
+    /// Oculot: concave fillets outside the top corners, so the island melts into the top edge of
+    /// the screen instead of meeting it at a right angle (0 = none).
     var flare: CGFloat = 0
+    /// Oculot: wave of the bottom edge while the island pours out of the notch. > 0: the middle
+    /// hangs lower than the sides (it leads); < 0: the sides lead. 0 = flat.
+    var wave: CGFloat = 0
 
-    var animatableData: AnimatablePair<AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>, AnimatablePair<CGFloat, CGFloat>> {
-        get { .init(.init(.init(width, height), cornerRadius), .init(topRadius, flare)) }
+    var animatableData: AnimatablePair<AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>,
+                                       AnimatablePair<AnimatablePair<CGFloat, CGFloat>, CGFloat>> {
+        get { .init(.init(.init(width, height), cornerRadius), .init(.init(topRadius, flare), wave)) }
         set {
             width        = newValue.first.first.first
             height       = newValue.first.first.second
             cornerRadius = newValue.first.second
-            topRadius    = newValue.second.first
-            flare        = newValue.second.second
+            topRadius    = newValue.second.first.first
+            flare        = newValue.second.first.second
+            wave         = newValue.second.second
         }
     }
 
+    /// Right edge down, both bottom corners and the (possibly waving) bottom edge, ending on the left edge.
+    private func bottom(_ p: inout Path, cr: CGFloat) {
+        let w = max(-height * 0.4, min(wave, height * 0.4))
+        // Middle leads (w > 0): corners lift by w, the curve still passes through the full height.
+        // Sides lead (w < 0): corners at full height, the middle rises by |w| / 2.
+        let side = height - max(0, w)
+        let ctrl = height + w
+        p.addLine(to: CGPoint(x: width, y: side - cr))
+        p.addArc(center: CGPoint(x: width - cr, y: side - cr), radius: cr,
+                 startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        if abs(w) < 0.3 {
+            p.addLine(to: CGPoint(x: cr, y: side))
+        } else {
+            p.addQuadCurve(to: CGPoint(x: cr, y: side), control: CGPoint(x: width / 2, y: ctrl))
+        }
+        p.addArc(center: CGPoint(x: cr, y: side - cr), radius: cr,
+                 startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+    }
+
     func path(in rect: CGRect) -> Path {
-        let cr = max(0, cornerRadius)
+        let cr = max(0, min(cornerRadius, height / 2))
         var p  = Path()
 
         if flare > 0.5 && topRadius == 0 {
-            // ── Flat top glued to the screen edge, concave fillets outside each top corner ──
+            // Flat top glued to the screen edge, concave fillets outside each top corner
             let f = min(flare, height / 2)
             p.move(to: CGPoint(x: -f, y: 0))
             p.addLine(to: CGPoint(x: width + f, y: 0))
             p.addArc(tangent1End: CGPoint(x: width, y: 0), tangent2End: CGPoint(x: width, y: f), radius: f)
-            p.addLine(to: CGPoint(x: width, y: height - cr))
-            p.addArc(center: CGPoint(x: width - cr, y: height - cr), radius: cr,
-                     startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-            p.addLine(to: CGPoint(x: cr, y: height))
-            p.addArc(center: CGPoint(x: cr, y: height - cr), radius: cr,
-                     startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+            bottom(&p, cr: cr)
             p.addLine(to: CGPoint(x: 0, y: f))
             p.addArc(tangent1End: CGPoint(x: 0, y: 0), tangent2End: CGPoint(x: -f, y: 0), radius: f)
         } else if topRadius >= 0 {
-            // ── Convex rounded top corners (expanded) ──────────────────────────
+            // Convex (or square) top corners
             let tr = min(topRadius, min(width / 2, height / 2))
             p.move(to: CGPoint(x: tr, y: 0))
             p.addLine(to: CGPoint(x: width - tr, y: 0))
-            // Top-right convex corner
-            p.addArc(center: CGPoint(x: width - tr, y: tr), radius: tr,
-                     startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
-            // Right edge
-            p.addLine(to: CGPoint(x: width, y: height - cr))
-            // Bottom-right corner
-            p.addArc(center: CGPoint(x: width - cr, y: height - cr), radius: cr,
-                     startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-            // Bottom edge
-            p.addLine(to: CGPoint(x: cr, y: height))
-            // Bottom-left corner
-            p.addArc(center: CGPoint(x: cr, y: height - cr), radius: cr,
-                     startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
-            // Left edge
+            if tr > 0 {
+                p.addArc(center: CGPoint(x: width - tr, y: tr), radius: tr,
+                         startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
+            }
+            bottom(&p, cr: cr)
             p.addLine(to: CGPoint(x: 0, y: tr))
-            // Top-left convex corner
-            p.addArc(center: CGPoint(x: tr, y: tr), radius: tr,
-                     startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+            if tr > 0 {
+                p.addArc(center: CGPoint(x: tr, y: tr), radius: tr,
+                         startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+            }
         } else {
-            // ── Concave ear cutouts (compact / notch) ─────────────────────────
-            let er = -topRadius   // positive ear radius
+            // Concave ear cutouts
+            let er = -topRadius
             p.move(to: CGPoint(x: 0, y: 0))
-            // Top-left ear
             p.addArc(center: CGPoint(x: 0, y: er), radius: er,
                      startAngle: .degrees(270), endAngle: .degrees(0), clockwise: false)
-            // Top edge
             p.addLine(to: CGPoint(x: width - er, y: er))
-            // Top-right ear
             p.addArc(center: CGPoint(x: width, y: er), radius: er,
                      startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
-            // Right edge
-            p.addLine(to: CGPoint(x: width, y: height - cr))
-            // Bottom-right corner
-            p.addArc(center: CGPoint(x: width - cr, y: height - cr), radius: cr,
-                     startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
-            // Bottom edge
-            p.addLine(to: CGPoint(x: cr, y: height))
-            // Bottom-left corner
-            p.addArc(center: CGPoint(x: cr, y: height - cr), radius: cr,
-                     startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
-            // Left edge back to top-left corner
+            bottom(&p, cr: cr)
             p.addLine(to: CGPoint(x: 0, y: 0))
         }
 
