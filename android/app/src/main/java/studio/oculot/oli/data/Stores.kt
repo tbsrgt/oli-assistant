@@ -1,0 +1,111 @@
+package studio.oculot.oli.data
+
+import android.content.Context
+import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import org.json.JSONArray
+import org.json.JSONObject
+import studio.oculot.oli.core.SiteCheck
+import studio.oculot.oli.core.SiteStatus
+
+/** Réglages saisis par l'équipe. Chiffrés (clé AES dans l'Android Keystore). */
+data class Settings(
+    val espaceToken: String = "",
+    val espaceUrl: String = "",
+    val sites: String = "",
+    val icsUrl: String = "",
+)
+
+class SettingsStore(context: Context) {
+    private val prefs: SharedPreferences = run {
+        val key = MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+        EncryptedSharedPreferences.create(
+            context, "oli_reglages", key,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+        )
+    }
+
+    fun load() = Settings(
+        espaceToken = prefs.getString("espace_token", "").orEmpty(),
+        espaceUrl = prefs.getString("espace_url", "").orEmpty(),
+        sites = prefs.getString("sites", "").orEmpty(),
+        icsUrl = prefs.getString("ics_url", "").orEmpty(),
+    )
+
+    fun save(s: Settings) {
+        prefs.edit()
+            .putString("espace_token", s.espaceToken.trim())
+            .putString("espace_url", s.espaceUrl.trim())
+            .putString("sites", s.sites.trim())
+            .putString("ics_url", s.icsUrl.trim())
+            .apply()
+    }
+}
+
+/** État des sites entre deux passages (statuts, échecs de suite, pannes déjà signalées). Rien de secret. */
+class SiteStateStore(context: Context) {
+    private val prefs = context.getSharedPreferences("oli_etat_sites", Context.MODE_PRIVATE)
+
+    fun loadChecks(): Map<String, SiteCheck> {
+        val raw = prefs.getString("checks", null) ?: return emptyMap()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).associate { i ->
+                val o = arr.getJSONObject(i)
+                val c = SiteCheck(
+                    name = o.getString("name"),
+                    url = o.getString("url"),
+                    status = runCatching { SiteStatus.valueOf(o.getString("status")) }.getOrDefault(SiteStatus.UNKNOWN),
+                    httpCode = o.optIntOrNull("httpCode"),
+                    latencyMs = o.optLongOrNull("latencyMs"),
+                    tlsExpiresAtMs = o.optLongOrNull("tls"),
+                    lastCheckedAtMs = o.optLongOrNull("checkedAt"),
+                    lastError = if (o.has("error")) o.getString("error") else null,
+                    consecutiveFailures = o.optInt("fails", 0),
+                )
+                c.url to c
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun saveChecks(checks: List<SiteCheck>) {
+        val arr = JSONArray()
+        for (c in checks) {
+            arr.put(JSONObject().apply {
+                put("name", c.name); put("url", c.url); put("status", c.status.name)
+                c.httpCode?.let { put("httpCode", it) }
+                c.latencyMs?.let { put("latencyMs", it) }
+                c.tlsExpiresAtMs?.let { put("tls", it) }
+                c.lastCheckedAtMs?.let { put("checkedAt", it) }
+                c.lastError?.let { put("error", it) }
+                put("fails", c.consecutiveFailures)
+            })
+        }
+        prefs.edit().putString("checks", arr.toString()).apply()
+    }
+
+    fun loadNotified(): Set<String> = prefs.getStringSet("notified", emptySet())?.toSet() ?: emptySet()
+    fun saveNotified(urls: Set<String>) { prefs.edit().putStringSet("notified", urls).apply() }
+
+    /** Sites en ligne de l'espace client, gardés pour la surveillance en arrière-plan. */
+    fun loadEspaceSites(): List<Pair<String, String>> {
+        val raw = prefs.getString("espace_sites", null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { arr.getJSONObject(it).let { o -> o.getString("n") to o.getString("u") } }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun saveEspaceSites(list: List<Pair<String, String>>) {
+        val arr = JSONArray()
+        list.forEach { (n, u) -> arr.put(JSONObject().put("n", n).put("u", u)) }
+        prefs.edit().putString("espace_sites", arr.toString()).apply()
+    }
+
+    private fun JSONObject.optIntOrNull(k: String): Int? = if (has(k)) getInt(k) else null
+    private fun JSONObject.optLongOrNull(k: String): Long? = if (has(k)) getLong(k) else null
+}

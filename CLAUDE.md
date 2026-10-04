@@ -12,6 +12,9 @@ agenda, Instagram), avec un terminal intégré.
   `EspacePoller.swift` (espace client), `AgendaICS.swift` / `AgendaPoller.swift` (agenda),
   `Social.swift` / `SocialPoller.swift` (Instagram), `Briefing.swift` / `BriefingCenter.swift`,
   `OculotHomeView.swift` (accueil), `OliTerminal.swift` (terminal SwiftTerm).
+- `android/` — app Android d’Oli (Kotlin + Compose) : Aujourd’hui, réglages chiffrés, surveillance
+  des sites en arrière-plan. `JAVA_HOME=~/.local/jdk-17/Contents/Home ./gradlew assembleDebug testDebugUnitTest`
+  (SDK dans `~/Library/Android/sdk`, chemin dans `android/local.properties`, non versionné).
 - `docs/PLAN.md` — plan par phases. `tools/sounds-gen.py` — génère les sons.
 
 ## Construire
