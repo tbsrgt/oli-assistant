@@ -46,6 +46,10 @@ enum Section: String, CaseIterable, Identifiable {
     }
 }
 
+/// What the unfolded island shows: the overview (focus card + mini Olis), a section in full,
+/// the terminal or the chat.
+enum IslandTab: Equatable { case overview, full, terminal, chat }
+
 /// How Oli feels — drives the mascot.
 enum Mood: Equatable {
     case calm, busy, waiting, happy, alarm
@@ -88,6 +92,7 @@ final class OliModel: ObservableObject {
     // Notch
     @Published var expanded = false
     @Published var section: Section = .home
+    @Published var tab: IslandTab = .overview
     /// Sticky while typing in the terminal or the chat, so the notch does not fold under you.
     @Published var holdOpen = false
     /// Short message shown in the folded notch (« Garage Martin est en panne »), with its colour.
@@ -183,6 +188,9 @@ final class OliModel: ObservableObject {
             }
         }
     }
+
+    /// Sections shown as mini Olis / focus card (terminal and chat are tabs of their own).
+    var focusable: [Section] { sections.filter { $0 != .terminal && $0 != .chat } }
 
     var nextEvent: AgendaEvent? {
         let now = Date()
