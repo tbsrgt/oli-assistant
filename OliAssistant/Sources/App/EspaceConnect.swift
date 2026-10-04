@@ -55,14 +55,30 @@ enum EspaceConnect {
             EspacePoller.shared.pollNow()
             AppState.shared.activatePill("integration_espace")
             SoundEngine.shared.play("approve")
+            show(.finished, "Connecté à l’espace client")
             NotificationCenter.default.post(name: .oliConnectionsChanged, object: nil)
             appendAppLog("oli.log", "Espace client connecté en un clic (\(base.host ?? raw))")
             SystemNotify.post(title: "Oli est connecté à l’espace client", body: "Projets, échéances et suivi des sites arrivent dans l’encoche.", id: "espace-connect")
         }
     }
 
+    /// Oli confirms in the notch itself: system notifications may be turned off.
+    private static func show(_ state: BotState, _ text: String) {
+        let app = AppState.shared
+        guard let i = app.tasks.firstIndex(where: { $0.id == "integration_espace" }) else { return }
+        app.tasks[i].state = state
+        app.tasks[i].steps = [text]
+        NotificationCenter.default.post(name: .hookReveal, object: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+            guard let j = app.tasks.firstIndex(where: { $0.id == "integration_espace" }), app.tasks[j].steps == [text] else { return }
+            app.tasks[j].state = .idle
+            app.tasks[j].steps = []
+        }
+    }
+
     private static func fail(_ text: String) {
         SoundEngine.shared.play("error")
+        show(.error, text)
         appendAppLog("oli.log", "Connexion à l’espace refusée : \(text)")
         SystemNotify.post(title: "Connexion à l’espace impossible", body: text, id: "espace-connect-error")
     }
