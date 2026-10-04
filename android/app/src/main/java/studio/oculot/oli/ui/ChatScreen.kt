@@ -58,6 +58,7 @@ fun ChatScreen(
     onPrefillUsed: () -> Unit,
     onBack: () -> Unit,
     onConnect: () -> Unit,
+    onAsked: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     var messages by remember { mutableStateOf(store.messages()) }
@@ -83,7 +84,7 @@ fun ChatScreen(
         sending = true
         scope.launch {
             when (val r = repo.macChat(text, session)) {
-                is ChatResult.Ok -> { session = r.session ?: session; messages = messages + ChatMessage(false, r.reply) }
+                is ChatResult.Ok -> { session = r.session ?: session; messages = messages + ChatMessage(false, r.reply); onAsked() }
                 is ChatResult.Error -> messages = messages + ChatMessage(false, r.message, isError = true)
             }
             sending = false

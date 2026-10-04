@@ -53,11 +53,9 @@ data class TodayState(
     val agenda: Load<List<AgendaEvent>>? = null,
 )
 
+/** Écran de détail d'une tuile : Sites, Projets ou Agenda. */
 @Composable
-fun TodayScreen(state: TodayState, onRefresh: () -> Unit, onSettings: () -> Unit, onChat: () -> Unit = {}, noLockWarning: Boolean = false) {
-    val down = state.sites.count { it.status == SiteStatus.DOWN }
-    val late = (state.espace as? Load.Ok)?.value?.count { it.isLate } ?: 0
-
+fun DetailScreen(kind: String, state: TodayState, onBack: () -> Unit, onRefresh: () -> Unit, onSettings: () -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -65,60 +63,23 @@ fun TodayScreen(state: TodayState, onRefresh: () -> Unit, onSettings: () -> Unit
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Oli", color = Oc.Text, fontSize = 22.sp, fontWeight = FontWeight.Black)
-            Text(".", color = Oc.Tomato, fontSize = 22.sp, fontWeight = FontWeight.Black)
-            Spacer(Modifier.weight(1f))
-            if (state.loading) {
-                CircularProgressIndicator(Modifier.size(20.dp), color = Oc.Butter, strokeWidth = 2.dp)
-                Spacer(Modifier.width(12.dp))
-            } else {
-                IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, "Actualiser", tint = Oc.Text) }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                ScreenHeader(when (kind) { "sites" -> "Sites"; "projets" -> "Projets"; else -> "Agenda" }, onBack)
             }
-            IconButton(onClick = onChat) { Icon(Icons.Filled.Face, "Demander à Oli", tint = Oc.Text) }
-            IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Réglages", tint = Oc.Text) }
+            if (state.loading) CircularProgressIndicator(Modifier.size(20.dp), color = Oc.Butter, strokeWidth = 2.dp)
+            else IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, "Actualiser", tint = Oc.Text) }
         }
-
-        if (noLockWarning) {
-            Surface(color = Oc.Butter.copy(alpha = 0.12f), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-                Text("Ton téléphone n’a pas de verrouillage. Active un code, un schéma ou l’empreinte dans les réglages Android pour protéger Oli.",
-                    color = Oc.Butter, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
-            }
+        Spacer(Modifier.height(8.dp))
+        when (kind) {
+            "sites" -> Section("Surveillés toutes les 15 min") { SitesBlock(state, onSettings) }
+            "projets" -> Section("Espace client") { EspaceBlock(state.espace, onSettings) }
+            else -> Section("Les deux prochaines semaines") { AgendaBlock(state.agenda, onSettings, limit = 30) }
         }
-
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            OliMascot(Modifier.size(180.dp), worried = down > 0)
-        }
-
-        Text(greeting(), color = Oc.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-        Text(
-            DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRANCE).format(LocalDate.now()).replaceFirstChar { it.uppercase() },
-            color = Oc.Muted, fontSize = 15.sp,
-        )
-        Spacer(Modifier.height(10.dp))
-        Text(summary(state, down, late), color = if (down > 0) Oc.Down else Oc.Butter, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-        Spacer(Modifier.height(20.dp))
-
-        Section("Sites") { SitesBlock(state, onSettings) }
-        Section("Projets") { EspaceBlock(state.espace, onSettings) }
-        Section("Agenda") { AgendaBlock(state.agenda, onSettings) }
-        Surface(
-            color = Oc.Card, shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Oc.CardBorder),
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onChat),
-        ) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Demander à Oli", color = Oc.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Une question, un mail à rédiger ? Claude te répond via ton Mac.", color = Oc.Muted, fontSize = 13.sp)
-                }
-                Text("→", color = Oc.Tomato, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-        Spacer(Modifier.height(24.dp))
     }
 }
 
-private fun greeting(): String {
+internal fun greeting(): String {
     val h = LocalTime.now().hour
     return when {
         h < 5 -> "Encore debout ?"
@@ -128,7 +89,7 @@ private fun greeting(): String {
     }
 }
 
-private fun summary(state: TodayState, down: Int, late: Int): String = when {
+internal fun summary(state: TodayState, down: Int, late: Int): String = when {
     down == 1 -> "Un site est en panne, je t’ai mis le détail juste en dessous."
     down > 1 -> "$down sites sont en panne, regarde vite en dessous."
     late == 1 -> "Tous les sites tiennent le coup. Un projet a pris du retard."
@@ -242,7 +203,7 @@ private fun EspaceBlock(load: Load<List<EspaceProject>>?, onSettings: () -> Unit
 }
 
 @Composable
-private fun AgendaBlock(load: Load<List<AgendaEvent>>?, onSettings: () -> Unit) {
+private fun AgendaBlock(load: Load<List<AgendaEvent>>?, onSettings: () -> Unit, limit: Int = 8) {
     when (load) {
         null -> Hint("Je feuillette l’agenda…")
         Load.NotConfigured -> Hint("Connecte ton agenda pour voir tes prochains rendez-vous.", "Se connecter", onSettings)
@@ -252,7 +213,7 @@ private fun AgendaBlock(load: Load<List<AgendaEvent>>?, onSettings: () -> Unit) 
                 Hint("Rien de prévu dans les deux semaines. Calme plat !")
             } else {
                 val today = LocalDate.now()
-                load.value.take(8).forEach { e ->
+                load.value.take(limit).forEach { e ->
                     val day = e.dayLabel(today)
                     Row3(
                         dot = if (day == "aujourd’hui") Oc.Tomato else Oc.Butter,

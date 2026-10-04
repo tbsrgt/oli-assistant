@@ -25,6 +25,9 @@ object Notifier {
     const val CH_BRIEFING = "briefing"
     const val CH_REMINDERS = "rappels"
     const val CH_DEADLINES = "echeances"
+    const val CH_CLAUDE = "claude"
+    const val CH_EVENING = "soir"
+    const val CH_FLOATING = "flottant"
 
     private const val TOMATO = 0xFFFF5B37.toInt()
 
@@ -40,23 +43,30 @@ object Notifier {
                 .apply { description = "10 minutes avant chaque rendez-vous." },
             NotificationChannel(CH_DEADLINES, "Mises en ligne", NotificationManager.IMPORTANCE_DEFAULT)
                 .apply { description = "La veille d’une mise en ligne prévue dans l’espace client." },
+            NotificationChannel(CH_CLAUDE, "Claude Code", NotificationManager.IMPORTANCE_HIGH)
+                .apply { description = "Quand Claude attend ton accord ou a fini, sur ton Mac." },
+            NotificationChannel(CH_EVENING, "Mode avion du soir", NotificationManager.IMPORTANCE_DEFAULT)
+                .apply { description = "Le rappel de 22 h pour couper le téléphone." },
+            NotificationChannel(CH_FLOATING, "Oli flottant", NotificationManager.IMPORTANCE_MIN)
+                .apply { description = "Obligatoire pour garder la pastille d’Oli à l’écran."; setShowBadge(false) },
         ).forEach { nm.createNotificationChannel(it) }
     }
 
-    fun openApp(context: Context, requestCode: Int = 0): PendingIntent = PendingIntent.getActivity(
+    fun openApp(context: Context, requestCode: Int = 0, screen: String? = null): PendingIntent = PendingIntent.getActivity(
         context, requestCode,
-        Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .apply { if (screen != null) putExtra(MainActivity.EXTRA_SCREEN, screen) },
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    private fun base(context: Context, channel: String, title: String, text: String) =
+    private fun base(context: Context, channel: String, title: String, text: String, screen: String? = null) =
         NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notif_oli)
             .setColor(TOMATO)
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setContentIntent(openApp(context))
+            .setContentIntent(openApp(context, channel.hashCode(), screen))
             .setAutoCancel(true)
 
     private fun post(context: Context, id: Int, n: Notification) {
@@ -80,13 +90,31 @@ object Notifier {
             .build())
 
     fun briefing(context: Context, b: BriefingText) = post(context, 8_30,
-        base(context, CH_BRIEFING, b.title, b.body).build())
+        base(context, CH_BRIEFING, b.title, b.body, screen = "briefing").build())
 
     fun deadline(context: Context, p: EspaceProject) = post(context, ("echeance" + p.id).hashCode(),
         base(context, CH_DEADLINES, "Demain : mise en ligne de ${p.name}",
             "${p.kindLabel} · étape en cours : ${p.stepLabel}" +
                 (if (p.stepsTotal > 0) " (${p.stepsDone}/${p.stepsTotal})" else "") + ". Tout est prêt ?")
             .build())
+
+    fun claudeWaiting(context: Context, a: studio.oculot.oli.core.ClaudeApproval) = post(context, ("claude" + a.id).hashCode(),
+        base(context, CH_CLAUDE, "Claude attend ton accord · ${a.project}",
+            listOf(a.tool, a.summary).filter { it.isNotBlank() }.joinToString(" : ") + "\nTouche pour décider (empreinte demandée).",
+            screen = "claude")
+            .setPriority(NotificationCompat.PRIORITY_HIGH).build())
+
+    fun claudeFinished(context: Context, s: studio.oculot.oli.core.ClaudeSession) = post(context, ("claude-fini" + s.id).hashCode(),
+        base(context, CH_CLAUDE, "Claude a fini · ${s.project}", s.activity.ifBlank { "La session est terminée." }, screen = "claude").build())
+
+    fun evening(context: Context) {
+        val airplane = PendingIntent.getActivity(context, 2200,
+            Intent(android.provider.Settings.ACTION_AIRPLANE_MODE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        post(context, 22_00, base(context, CH_EVENING, "C’est l’heure de souffler",
+            "Passe en mode avion pour la soirée ? Oli ne peut pas le faire à ta place, mais le réglage est à un tap.")
+            .addAction(0, "Mode avion", airplane).build())
+    }
 
     /** Rappel de rendez-vous, avec « Rejoindre la visio » et/ou « Itinéraire » si possible. */
     fun reminder(context: Context, id: String, title: String, timeLabel: String, joinUrl: String?, address: String?) {

@@ -38,10 +38,11 @@ import androidx.compose.ui.unit.sp
 import studio.oculot.oli.ShareActivity
 import studio.oculot.oli.data.AutomationPrefs
 import studio.oculot.oli.work.Alarms
+import studio.oculot.oli.overlay.OverlayService
 
 /** Réglages → Automatisations : tout est actif par défaut, chaque interrupteur coupe une fonction. */
 @Composable
-fun AutomationsScreen(onBack: () -> Unit, onChanged: () -> Unit) {
+fun AutomationsScreen(onBack: () -> Unit, onChanged: () -> Unit, onFloatingIntro: () -> Unit = {}) {
     val context = LocalContext.current
     val prefs = remember { AutomationPrefs(context) }
     val states = remember { mutableStateMapOf<AutomationPrefs.Key, Boolean>().apply { AutomationPrefs.Key.entries.forEach { put(it, prefs.isOn(it)) } } }
@@ -64,6 +65,7 @@ fun AutomationsScreen(onBack: () -> Unit, onChanged: () -> Unit) {
                         Switch(
                             checked = states[k] == true,
                             onCheckedChange = { on ->
+                                if (k == AutomationPrefs.Key.FLOATING && on && !OverlayService.canShow(context)) { onFloatingIntro(); return@Switch }
                                 states[k] = on
                                 prefs.set(k, on)
                                 apply(context, k, on)
@@ -96,6 +98,8 @@ fun AutomationsScreen(onBack: () -> Unit, onChanged: () -> Unit) {
 private fun apply(context: Context, k: AutomationPrefs.Key, on: Boolean) {
     when (k) {
         AutomationPrefs.Key.BRIEFING -> Alarms.scheduleBriefing(context)
+        AutomationPrefs.Key.EVENING -> Alarms.scheduleEvening(context)
+        AutomationPrefs.Key.FLOATING -> if (on) OverlayService.start(context) else OverlayService.stop(context)
         AutomationPrefs.Key.REMINDERS -> if (!on) Alarms.scheduleReminders(context, emptyList())
         AutomationPrefs.Key.SHARE -> context.packageManager.setComponentEnabledSetting(
             ComponentName(context, ShareActivity::class.java),

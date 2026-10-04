@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Oli descend comme une vague : il arrive d'en haut, dépasse un peu et se pose. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android" android:ordering="together">
+    <objectAnimator android:propertyName="translateY" android:valueFrom="-46" android:valueTo="0"
+        android:valueType="floatType" android:duration="620" android:interpolator="@android:interpolator/overshoot" />
+    <objectAnimator android:propertyName="scaleX" android:valueFrom="0.7" android:valueTo="1"
+        android:valueType="floatType" android:duration="620" android:interpolator="@android:interpolator/decelerate_cubic" />
+    <objectAnimator android:propertyName="scaleY" android:valueFrom="0.55" android:valueTo="1"
+        android:valueType="floatType" android:duration="620" android:interpolator="@android:interpolator/overshoot" />
+</set>

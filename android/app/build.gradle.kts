@@ -50,6 +50,10 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.core:core-splashscreen:1.0.1")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.lifecycle:lifecycle-service:2.8.6")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.6")
     implementation("androidx.fragment:fragment-ktx:1.8.4")
     implementation("androidx.glance:glance-appwidget:1.1.1")
     // Lecture du QR code de jumelage avec le Mac (ZXing, sans Google Play Services).

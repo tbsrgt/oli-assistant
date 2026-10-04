@@ -42,7 +42,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /** Ce que montre le widget : lu dans les caches locaux, aucun appel réseau. */
-private data class WidgetData(val sitesLine: String, val sitesColor: Color, val nextLine: String)
+private data class WidgetData(val sitesLine: String, val sitesColor: Color, val nextLine: String, val claudeLine: String?)
 
 /** Widget d'écran d'accueil : Oli, l'état des sites et le prochain rendez-vous. Un tap ouvre l'app. */
 class OliWidget : GlanceAppWidget() {
@@ -75,7 +75,8 @@ class OliWidget : GlanceAppWidget() {
             }
             "$day ${DateTimeFormatter.ofPattern("HH:mm", Locale.FRANCE).format(at)} · ${next.first}"
         }
-        return WidgetData(line, color, nextLine)
+        val claude = MemoryStore(context).let { m -> if (Repository(context).settings().mac != null && m.claudeWaiting() > 0) m.claudeLine() else null }
+        return WidgetData(line, color, nextLine, claude)
     }
 
     @Composable
@@ -93,6 +94,7 @@ class OliWidget : GlanceAppWidget() {
                 Text(d.sitesLine, maxLines = 1, style = TextStyle(color = ColorProvider(d.sitesColor), fontSize = 13.sp, fontWeight = FontWeight.Medium))
                 Spacer(GlanceModifier.height(2.dp))
                 Text(d.nextLine, maxLines = 2, style = TextStyle(color = ColorProvider(MUTED), fontSize = 13.sp))
+                d.claudeLine?.let { Text(it, maxLines = 1, style = TextStyle(color = ColorProvider(TOMATO), fontSize = 13.sp, fontWeight = FontWeight.Medium)) }
             }
         }
     }
@@ -104,6 +106,7 @@ class OliWidget : GlanceAppWidget() {
         private val OK = Color(0xFF22C55E)
         private val DOWN = Color(0xFFF4505E)
         private val BUTTER = Color(0xFFFFD65C)
+        private val TOMATO = Color(0xFFFF5B37)
 
         suspend fun refresh(context: Context) = OliWidget().updateAll(context)
     }

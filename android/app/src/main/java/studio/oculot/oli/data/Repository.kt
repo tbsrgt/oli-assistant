@@ -16,6 +16,8 @@ import studio.oculot.oli.core.AgendaApi
 import studio.oculot.oli.core.AgendaEvent
 import studio.oculot.oli.core.AgendaLire
 import studio.oculot.oli.core.ChatResult
+import studio.oculot.oli.core.ClaudeBoard
+import studio.oculot.oli.core.ClaudeCode
 import studio.oculot.oli.core.Espace
 import studio.oculot.oli.core.EspaceProject
 import studio.oculot.oli.core.Ics
@@ -162,13 +164,13 @@ class Repository(private val context: Context) {
             val r = Net.getReply(p.baseUrl + "/v1/status", headers = mapOf("Authorization" to "Bearer ${p.token}"),
                 connectTimeoutMs = 5_000, readTimeoutMs = 10_000)
             when {
-                r.code == 401 || r.code == 403 -> Result.failure(IllegalStateException("Ton Mac refuse ce jumelage : affiche un nouveau QR code et rescanne-le."))
+                r.code == 401 || r.code == 403 -> { lastRefusedAt = System.currentTimeMillis(); Result.failure(IllegalStateException("Ton Mac refuse ce jumelage : affiche un nouveau QR code et rescanne-le.")) }
                 r.code != 200 -> Result.failure(IllegalStateException("Ton Mac répond « HTTP ${r.code} »."))
                 else -> MacLink.parseStatus(r.body)?.let { Result.success(it) }
                     ?: Result.failure(IllegalStateException("Réponse illisible de ton Mac."))
             }
         } catch (_: IOException) {
-            Result.failure(IllegalStateException(MacLink.UNREACHABLE))
+            Result.failure(IllegalStateException(unreachable()))
         }
     }
 
@@ -183,10 +185,42 @@ class Repository(private val context: Context) {
             MacLink.parseChat(r.code, r.body)
         } catch (e: SocketTimeoutException) {
             // Délai de connexion → Mac injoignable ; délai de lecture → Claude réfléchit trop longtemps.
-            if (e.message?.contains("connect", ignoreCase = true) == true) ChatResult.Error(MacLink.UNREACHABLE)
+            if (e.message?.contains("connect", ignoreCase = true) == true) ChatResult.Error(unreachable())
             else ChatResult.Error("Oli met trop de temps à répondre (plus de 2 min). Réessaie avec une question plus courte.")
         } catch (_: IOException) {
-            ChatResult.Error(MacLink.UNREACHABLE)
+            ChatResult.Error(unreachable())
+        }
+    }
+
+    /** Sessions Claude Code et demandes d'autorisation (GET /v1/claude/sessions). */
+    suspend fun claudeBoard(quick: Boolean = false): Load<ClaudeBoard> = withContext(Dispatchers.IO) {
+        val p = settingsStore.load().mac ?: return@withContext Load.NotConfigured
+        if (!MacLink.isLocalHost(p.host)) return@withContext Load.Failed("Adresse du Mac non locale : refais le jumelage.")
+        try {
+            val r = Net.getReply(p.baseUrl + "/v1/claude/sessions", headers = mapOf("Authorization" to "Bearer ${p.token}"),
+                connectTimeoutMs = if (quick) 3_000 else 5_000, readTimeoutMs = 10_000)
+            when {
+                r.code == 401 || r.code == 403 -> Load.Failed("Ton Mac refuse ce jumelage : refais-le depuis Connexions.")
+                r.code == 404 -> Load.Failed("Oli sur ton Mac ne connaît pas encore Claude Code : mets-le à jour.")
+                r.code != 200 -> Load.Failed("Ton Mac répond « HTTP ${r.code} ».")
+                else -> ClaudeCode.parseBoard(r.body)?.let { Load.Ok(it) } ?: Load.Failed("Réponse illisible de ton Mac.")
+            }
+        } catch (_: IOException) {
+            Load.Failed(unreachable())
+        }
+    }
+
+    /** Autorise ou refuse une demande (POST /v1/claude/approvals/<id>). null si c'est fait, sinon le message. */
+    suspend fun claudeDecide(id: String, allow: Boolean): String? = withContext(Dispatchers.IO) {
+        val p = settingsStore.load().mac ?: return@withContext "Jumelle d’abord ton Mac."
+        if (!MacLink.isLocalHost(p.host)) return@withContext "Adresse du Mac non locale : refais le jumelage."
+        try {
+            val r = Net.postJson(p.baseUrl + "/v1/claude/approvals/" + java.net.URLEncoder.encode(id, "UTF-8"),
+                ClaudeCode.approvalBody(allow), headers = mapOf("Authorization" to "Bearer ${p.token}"),
+                connectTimeoutMs = 5_000, readTimeoutMs = 15_000)
+            if (ClaudeCode.parseApprovalReply(r.code, r.body)) null else ClaudeCode.approvalError(r.code, r.body)
+        } catch (_: IOException) {
+            unreachable()
         }
     }
 
@@ -199,5 +233,14 @@ class Repository(private val context: Context) {
     companion object {
         /** Évite que l'écran et la tâche de fond comptent deux fois le même échec. */
         private val lock = Mutex()
+
+        /** Dernier jumelage refusé : le Mac bloque l'adresse 5 min après 5 codes refusés. */
+        @Volatile private var lastRefusedAt = 0L
+
+        /** Erreur réseau : juste après un refus, c'est sans doute le blocage temporaire du Mac. */
+        fun unreachable(): String =
+            if (System.currentTimeMillis() - lastRefusedAt < 6 * 60_000L)
+                "Ton Mac ne répond plus après plusieurs codes refusés : c'est une protection. Réessaie dans quelques minutes."
+            else MacLink.UNREACHABLE
     }
 }

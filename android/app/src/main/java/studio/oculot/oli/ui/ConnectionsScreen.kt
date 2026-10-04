@@ -38,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,15 +78,40 @@ fun ConnectionsScreen(
     onChanged: () -> Unit,
     onBack: () -> Unit,
     onAutomations: () -> Unit,
+    wizard: Boolean = false,
 ) {
     var open by remember { mutableStateOf<Service?>(null) }
     val espaceSites = remember(settings) { repo.espaceSites() }
     val siteCount = remember(settings, espaceSites) { Sites.targets(settings.sites, espaceSites).size }
+    // « Tout connecter » : enchaîne les services manquants, un par un.
+    var queue by remember { mutableStateOf<List<Service>>(emptyList()) }
+    var wizardTotal by remember { mutableStateOf(0) }
+    var wizardMessage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        if (!wizard) return@LaunchedEffect
+        val s = repo.settings()
+        val missing = listOfNotNull(
+            Service.ESPACE.takeIf { s.espaceToken.isBlank() },
+            Service.AGENDA.takeIf { s.icsUrl.isBlank() },
+            Service.SITES.takeIf { Sites.targets(s.sites, repo.espaceSites()).isEmpty() },
+            Service.CLAUDE.takeIf { s.mac == null },
+        )
+        queue = missing; wizardTotal = missing.size; open = missing.firstOrNull()
+        if (missing.isEmpty()) wizardMessage = "Tout est déjà connecté. Bravo !"
+    }
+    fun closeSheet() {
+        if (wizard && queue.isNotEmpty()) {
+            queue = queue.drop(1)
+            open = queue.firstOrNull()
+            if (open == null) wizardMessage = "C’est fini ! Tu peux revenir ici quand tu veux."
+        } else open = null
+    }
 
     Column(
         Modifier.fillMaxSize().background(Oc.Bg).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        ScreenHeader("Réglages", onBack)
+        ScreenHeader(if (wizard) "Tout connecter" else "Réglages", onBack)
+        wizardMessage?.let { SuccessText(it) }
         HelpText("Un bouton par service. Oli vérifie que ça marche avant d’enregistrer, et tout reste chiffré sur ce téléphone.",
             Modifier.padding(top = 4.dp, bottom = 8.dp))
 
@@ -130,7 +156,7 @@ fun ConnectionsScreen(
     if (current != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
-            onDismissRequest = { open = null },
+            onDismissRequest = { closeSheet() },
             sheetState = sheetState,
             containerColor = Oc.Card,
             contentColor = Oc.Text,
@@ -139,13 +165,20 @@ fun ConnectionsScreen(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)
                     .padding(bottom = 24.dp).navigationBarsPadding().imePadding(),
             ) {
-                val close = { open = null }
-                when (current) {
+                val close = { closeSheet() }
+                if (wizard && wizardTotal > 0) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
+                        Text("Tout connecter · étape ${wizardTotal - queue.size + 1}/$wizardTotal", color = Oc.Tomato, fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        TextButton(onClick = close) { Text("Passer", color = Oc.Muted) }
+                    }
+                }
+                androidx.compose.runtime.key(current) { when (current) {
                     Service.ESPACE -> EspaceSheet(repo, onChanged, close)
                     Service.AGENDA -> AgendaSheet(repo, onChanged, close)
                     Service.SITES -> SitesSheet(repo, espaceSites, onChanged, close)
                     Service.CLAUDE -> ClaudeSheet(repo, onChanged, close)
-                }
+                } }
             }
         }
     }

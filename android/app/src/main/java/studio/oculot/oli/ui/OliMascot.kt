@@ -79,9 +79,14 @@ private val Satellite = Color(0xFFFF7A45)
 
 /** Oli qui flotte doucement et cligne des yeux. */
 @Composable
-fun OliMascot(modifier: Modifier = Modifier, worried: Boolean = false) {
+fun OliMascot(modifier: Modifier = Modifier, worried: Boolean = false, frameMs: Long = 0L) {
     var t by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(frameMs) {
+        if (frameMs > 0) {
+            // Mode économe (pastille flottante) : quelques images par seconde suffisent.
+            val start = System.nanoTime()
+            while (true) { t = (System.nanoTime() - start) / 1e9f; kotlinx.coroutines.delay(frameMs) }
+        }
         val start = withFrameMillis { it }
         while (true) {
             withFrameMillis { t = (it - start) / 1000f }

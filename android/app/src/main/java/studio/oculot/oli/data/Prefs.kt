@@ -8,15 +8,18 @@ import org.json.JSONObject
 class AutomationPrefs(context: Context) {
     private val prefs = context.getSharedPreferences("oli_automatisations", Context.MODE_PRIVATE)
 
-    enum class Key(val id: String, val title: String, val help: String) {
+    enum class Key(val id: String, val title: String, val help: String, val defaultOn: Boolean = true) {
         BRIEFING("briefing", "Briefing du matin", "À 8 h 30 : tes rendez-vous du jour, les projets urgents et l’état des sites."),
         REMINDERS("rappels", "Rappels de rendez-vous", "10 min avant, avec « Rejoindre la visio » ou « Itinéraire »."),
         OUTAGES("pannes", "Pannes de site", "Une alerte quand un site tombe, une autre quand il revient."),
         DEADLINES("echeances", "Veille de mise en ligne", "La veille d’une mise en ligne d’un projet de l’espace client."),
         SHARE("partage", "Partage vers Oli", "Oli apparaît quand tu partages un fichier ou un lien."),
+        CLAUDE("claude", "Claude Code", "« Claude attend ton accord » et « Claude a fini », si ton Mac est joignable."),
+        EVENING("soir", "Mode avion du soir", "Un rappel à 22 h pour couper le téléphone. Android ne laisse pas une app activer le mode avion elle-même.", defaultOn = false),
+        FLOATING("flottant", "Oli flottant", "Une pastille en haut de l’écran, par-dessus les autres apps.", defaultOn = false),
     }
 
-    fun isOn(k: Key): Boolean = prefs.getBoolean(k.id, true)
+    fun isOn(k: Key): Boolean = prefs.getBoolean(k.id, k.defaultOn)
     fun set(k: Key, on: Boolean) { prefs.edit().putBoolean(k.id, on).apply() }
 }
 
@@ -30,6 +33,20 @@ class MemoryStore(context: Context) {
     /** Codes des alarmes de rappel programmées (pour annuler celles qui n'ont plus lieu d'être). */
     fun reminderCodes(): Set<String> = prefs.getStringSet("rappels", emptySet())?.toSet() ?: emptySet()
     fun saveReminderCodes(s: Set<String>) { prefs.edit().putStringSet("rappels", s).apply() }
+
+    // Claude Code : états des sessions et demandes déjà signalées, résumé pour la pastille et l'accueil.
+    fun claudeStates(): String? = prefs.getString("claude_etats", null)
+    fun claudeSeenApprovals(): Set<String> = prefs.getStringSet("claude_vus", emptySet())?.toSet() ?: emptySet()
+    fun saveClaude(states: String, seen: Set<String>, line: String, waiting: Int) {
+        prefs.edit().putString("claude_etats", states).putStringSet("claude_vus", seen)
+            .putString("claude_ligne", line).putInt("claude_attente", waiting).apply()
+    }
+    fun claudeLine(): String? = prefs.getString("claude_ligne", null)
+    fun claudeWaiting(): Int = prefs.getInt("claude_attente", 0)
+
+    /** Dernière note de l'audit de sécurité (−1 si jamais fait). */
+    fun securityScore(): Int = prefs.getInt("note_securite", -1)
+    fun saveSecurityScore(n: Int) { prefs.edit().putInt("note_securite", n).apply() }
 
     fun lastBriefingDay(): String? = prefs.getString("dernier_briefing", null)
     fun saveLastBriefingDay(day: String) { prefs.edit().putString("dernier_briefing", day).apply() }
