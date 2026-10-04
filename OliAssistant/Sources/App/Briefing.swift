@@ -64,7 +64,7 @@ enum Briefing {
 
         let active = f.projects.filter { !$0.isDone }
         if !f.espaceConfigured {
-            lines.append("L’espace client n’est pas encore branché : ajoute le jeton d’équipe dans Réglages → Integrations.")
+            lines.append("L’espace client n’est pas encore branché : ajoute le jeton d’équipe dans Réglages → Connexions.")
         } else if active.isEmpty {
             lines.append("Aucun projet en cours dans l’espace client.")
         } else {

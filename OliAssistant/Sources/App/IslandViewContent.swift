@@ -4186,7 +4186,7 @@ struct SocialListView: View {
                     Text(e)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundColor(Color(hex: "#F4505E"))
-                    Text("Vérifie le jeton dans Réglages → Integrations → Instagram.")
+                    Text("Vérifie le jeton dans Réglages → Connexions → Instagram.")
                         .font(.system(size: 10)).foregroundColor(Color(hex: "#8E939C"))
                 } else if !snapshot.unanswered.isEmpty {
                     ForEach(snapshot.unanswered.prefix(3)) { c in

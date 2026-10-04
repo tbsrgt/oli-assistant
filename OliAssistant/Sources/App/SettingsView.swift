@@ -139,7 +139,7 @@ struct SettingsView: View {
                         SettingsSidebarRow(title: "Active pills", icon: "square.grid.2x2.fill",              color: "#F5A524").tag("activepills")
                         SettingsSidebarRow(title: "Agents",       icon: "terminal.fill",                     color: "#3B9EFF").tag("agents")
                         SettingsSidebarRow(title: "Chat",         icon: "bubble.left.and.bubble.right.fill", color: "#E07950").tag("chat")
-                        SettingsSidebarRow(title: "Integrations", icon: "puzzlepiece.extension.fill",        color: "#7C5CFF").tag("integrations")
+                        SettingsSidebarRow(title: "Connexions", icon: "puzzlepiece.extension.fill",        color: "#7C5CFF").tag("integrations")
                         SettingsSidebarRow(title: "Shortcuts",    icon: "keyboard.fill",                     color: "#6366F1").tag("shortcuts")
                     }
                     .listStyle(.sidebar)
@@ -207,7 +207,7 @@ struct SettingsView: View {
         case "activepills":  return "Active pills"
         case "agents":       return "Agents"
         case "chat":         return "Chat"
-        case "integrations": return "Integrations"
+        case "integrations": return "Connexions"
         case "shortcuts":    return "Shortcuts"
         default:             return "General"
         }
@@ -804,178 +804,8 @@ struct SettingsView: View {
     // MARK: - Integrations section
 
     @ViewBuilder private var integrationsSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 14) {
-
-                // Espace client Oculot
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color(hex: "#FF5B37")).frame(width: 8, height: 8)
-                        Text("Espace client").font(.system(size: 12, weight: .semibold))
-                        Text("Oculot").font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                    SecureField("Team token  (ESPACE_TEAM_TOKEN)", text: $espaceToken)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("URL  (défaut : \(EspacePoller.defaultBaseURL))", text: $espaceUrl)
-                        .textFieldStyle(.roundedBorder)
-                    if !state.espaceClients.isEmpty, let sync = state.espaceLastSync {
-                        Text("\(state.espaceClients.count) projets · synchro \(sync.formatted(date: .omitted, time: .shortened))")
-                            .font(.system(size: 11)).foregroundColor(.secondary)
-                    } else if state.espaceLastStatus == 401 {
-                        Text("Jeton refusé par l’espace client.").font(.system(size: 11)).foregroundColor(.red)
-                    } else if state.espaceLastStatus > 0 && state.espaceLastStatus != 200 {
-                        Text("Réponse \(state.espaceLastStatus) de l’espace client.").font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                }
-
-                // Agenda Oculot (lien iCal personnel, lecture seule)
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color(hex: "#FFD65C")).frame(width: 8, height: 8)
-                        Text("Agenda").font(.system(size: 12, weight: .semibold))
-                        Text("Oculot").font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                    SecureField("Lien du calendrier  (https://… ou webcal://…)", text: $agendaIcsUrl)
-                        .textFieldStyle(.roundedBorder)
-                    Text("Sur agenda.oculot.studio : le lien personnel « S’abonner au calendrier » (Copier le lien). Une adresse iCal Google Agenda marche aussi.")
-                        .font(.system(size: 11)).foregroundColor(.secondary)
-                    if let sync = state.agendaLastSync, state.agendaLastStatus == 200 {
-                        let n = state.agendaEvents.count
-                        Text("\(n == 0 ? "aucun" : "\(n)") rendez-vous sur 14 jours · synchro \(sync.formatted(date: .omitted, time: .shortened))")
-                            .font(.system(size: 11)).foregroundColor(.secondary)
-                    } else if state.agendaLastStatus == -1 {
-                        Text("Lien invalide : il doit commencer par https:// (ou webcal://).").font(.system(size: 11)).foregroundColor(.red)
-                    } else if state.agendaLastStatus == 401 || state.agendaLastStatus == 403 || state.agendaLastStatus == 404 {
-                        Text("Lien refusé : redemande un lien de calendrier sur l’agenda.").font(.system(size: 11)).foregroundColor(.red)
-                    } else if state.agendaLastStatus > 0 && state.agendaLastStatus != 200 {
-                        Text("Réponse \(state.agendaLastStatus) de l’agenda.").font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                }
-
-                // Sites clients Oculot
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color(hex: "#F7C3D4")).frame(width: 8, height: 8)
-                        Text("Sites clients").font(.system(size: 12, weight: .semibold))
-                        Text("Oculot").font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                    Text("Les sites livrés de l’espace client sont surveillés automatiquement.")
-                        .font(.system(size: 11)).foregroundColor(.secondary)
-                    Text("Autres sites à surveiller (une URL par ligne)")
-                        .font(.system(size: 11)).foregroundColor(.secondary)
-                    TextEditor(text: $sitesManual)
-                        .font(.system(size: 11, design: .monospaced))
-                        .frame(height: 58)
-                        .padding(2)
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.secondary.opacity(0.35), lineWidth: 1))
-                    SecureField("Clé API PageSpeed Insights  (gratuite, Google Cloud)", text: $pagespeedKey)
-                        .textFieldStyle(.roundedBorder)
-                    Text("Chaque jour : score PageSpeed mobile, expiration du domaine, www et domaine nu. Chaque semaine : robots.txt, sitemap, liens de l’accueil.")
-                        .font(.system(size: 11)).foregroundColor(.secondary)
-                    if let sync = state.sitesLastSync {
-                        let up = state.siteChecks.filter { $0.status == .ok }.count
-                        let down = state.siteChecks.filter { $0.status == .down }.count
-                        Text("\(state.siteChecks.count) sites · \(up) en ligne · \(down) en panne · dernière passe \(sync.formatted(date: .omitted, time: .shortened))")
-                            .font(.system(size: 11)).foregroundColor(down > 0 ? .red : .secondary)
-                    } else if !SitesPoller.targets.isEmpty {
-                        Text("\(SitesPoller.targets.count) sites · première vérification en cours…")
-                            .font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                }
-
-                // Instagram Oculot (lecture seule)
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color(hex: "#E1306C")).frame(width: 8, height: 8)
-                        Text("Instagram").font(.system(size: 12, weight: .semibold))
-                        Text("Oculot").font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                    SecureField("Jeton d’accès  (IGAA… ou EAA…)", text: $instagramToken)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Identifiant du compte  (facultatif, trouvé tout seul)", text: $instagramUserId)
-                        .textFieldStyle(.roundedBorder)
-                    Text("Lecture seule : abonnés, derniers posts, commentaires sans réponse, rappel après \(SocialSnapshot.quietDays) jours sans post. Oli ne publie jamais rien.")
-                        .font(.system(size: 11)).foregroundColor(.secondary)
-                    if let snap = state.social, snap.fetchedAt != nil {
-                        if let e = snap.error {
-                            Text(e).font(.system(size: 11)).foregroundColor(.red)
-                        } else {
-                            Text("@\(snap.username) · \(snap.followersLabel) · \(snap.lastPostLabel())")
-                                .font(.system(size: 11)).foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                // Email : envoyer directement depuis Oli (fichiers déposés sur l'encoche)
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color(hex: "#FF8A52")).frame(width: 8, height: 8)
-                        Text("Email").font(.system(size: 12, weight: .semibold))
-                        Text(KeychainStore.shared.get("mail-password") != nil ? "connecté" : "pour envoyer les fichiers déposés")
-                            .font(.system(size: 11)).foregroundColor(.secondary)
-                    }
-                    TextField("Ton adresse  (bonjour@oculot.studio, prenom@gmail.com…)", text: $mailAddress)
-                        .textFieldStyle(.roundedBorder)
-                        .onChange(of: mailAddress) { _, a in
-                            if mailHost.isEmpty || mailHost == EmailSender.preset(for: "").host {
-                                let p = EmailSender.preset(for: a); mailHost = p.host; mailPort = String(p.port)
-                            }
-                        }
-                    SecureField("Mot de passe  (mot de passe d’application pour Gmail / iCloud)", text: $mailPassword)
-                        .textFieldStyle(.roundedBorder)
-                    TextField("Nom affiché  (Tobias · Oculot)", text: $mailName)
-                        .textFieldStyle(.roundedBorder)
-                    DisclosureGroup("Serveur d’envoi") {
-                        HStack {
-                            TextField("Serveur SMTP", text: $mailHost).textFieldStyle(.roundedBorder)
-                            TextField("Port", text: $mailPort).textFieldStyle(.roundedBorder).frame(width: 70)
-                        }
-                        Text("Trouvé tout seul pour Gmail, iCloud, Outlook, Orange, Free et OVH (oculot.studio).")
-                            .font(.system(size: 10.5)).foregroundColor(.secondary)
-                    }
-                    .font(.system(size: 11))
-                    HStack(spacing: 8) {
-                        Button(mailTesting ? "Test…" : "Tester la connexion") { testMail() }
-                            .disabled(mailTesting || mailAddress.isEmpty || mailPassword.isEmpty)
-                        if let t = mailTest { Text(t).font(.system(size: 11)).foregroundColor(t.hasPrefix("✓") ? .green : .red) }
-                    }
-                }
-
-                // Vercel
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color(hex: "#7C5CFF")).frame(width: 8, height: 8)
-                        Text("Vercel").font(.system(size: 12, weight: .semibold))
-                    }
-                    SecureField("Token", text: $vercelToken)
-                        .textFieldStyle(.roundedBorder)
-                    IntegrationFilterRow(
-                        label: "Projects",
-                        items: vercelProjects,
-                        filter: $state.vercelProjectFilter,
-                        loading: loadingVercel,
-                        onLoad: loadVercelProjects
-                    )
-                }
-
-                // GitHub
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        Circle().fill(Color(hex: "#F4505E")).frame(width: 8, height: 8)
-                        Text("GitHub").font(.system(size: 12, weight: .semibold))
-                    }
-                    SecureField("Personal Access Token", text: $githubToken)
-                        .textFieldStyle(.roundedBorder)
-                    Text("Classic token with repo scope, or fine-grained with read access to Pull requests, Commit statuses and Actions.")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(hex: "#8E939C"))
-                }
-
-                Button("Save integrations") { saveIntegrations() }
-                    .buttonStyle(.borderedProminent)
-            }
-            .padding(6)
-        }
+        // Oculot: one « Se connecter » per service (ConnectionsPanel.swift)
+        GroupBox { ConnectionsPanel().padding(6) }
     }
 
     // MARK: - Actions
