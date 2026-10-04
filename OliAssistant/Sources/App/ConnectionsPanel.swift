@@ -7,7 +7,7 @@ import AppKit
 // Keychain and refreshes Oli. GitHub and Vercel can reuse the login already on this Mac.
 
 enum ConnectionKind: String, CaseIterable, Identifiable {
-    case email, espace, agenda, sites, instagram, github, vercel, pagespeed
+    case email, espace, agenda, sites, phone, instagram, github, vercel, pagespeed
     var id: String { rawValue }
 
     var title: String {
@@ -16,6 +16,7 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
         case .espace: return "Espace client"
         case .agenda: return "Agenda"
         case .sites: return "Sites surveillés"
+        case .phone: return "Téléphone"
         case .instagram: return "Instagram"
         case .github: return "GitHub"
         case .vercel: return "Vercel"
@@ -25,9 +26,10 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
     var why: String {
         switch self {
         case .email: return "Envoyer les fichiers déposés sur l’encoche"
-        case .espace: return "Projets, étapes et échéances des clients"
-        case .agenda: return "Prochains rendez-vous, rappel 10 min avant"
+        case .espace: return "espace.oculot.studio : projets, étapes, échéances"
+        case .agenda: return "agenda.oculot.studio : rendez-vous, rappel 10 min avant"
         case .sites: return "Pannes, certificats, liens cassés"
+        case .phone: return "Oli Android : Claude depuis ton téléphone, via ce Mac"
         case .instagram: return "Abonnés, posts, commentaires sans réponse"
         case .github: return "Pull requests et état des builds"
         case .vercel: return "Déploiements des sites"
@@ -40,6 +42,7 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
         case .espace: return "folder.fill"
         case .agenda: return "calendar"
         case .sites: return "globe"
+        case .phone: return "iphone.gen3"
         case .instagram: return "camera.fill"
         case .github: return "chevron.left.forwardslash.chevron.right"
         case .vercel: return "triangle.fill"
@@ -52,6 +55,7 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
         case .espace: return "#FF5B37"
         case .agenda: return "#FFD65C"
         case .sites: return "#F7C3D4"
+        case .phone: return "#3B9EFF"
         case .instagram: return "#E1306C"
         case .github: return "#F4505E"
         case .vercel: return "#7C5CFF"
@@ -64,7 +68,7 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
         case .email: return EmailSender.keys
         case .espace: return ["espace-token", "espace-url"]
         case .agenda: return ["agenda-ics-url"]
-        case .sites: return []
+        case .sites, .phone: return []
         case .instagram: return ["instagram-token", "instagram-user-id"]
         case .github: return ["github-token"]
         case .vercel: return ["vercel-token"]
@@ -79,6 +83,7 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
         case .espace: return k.get("espace-token") != nil
         case .agenda: return k.get("agenda-ics-url") != nil
         case .sites: return !AppState.shared.sitesManual.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .phone: return PhoneBridge.enabled
         case .instagram: return k.get("instagram-token") != nil
         case .github: return k.get("github-token") != nil
         case .vercel: return k.get("vercel-token") != nil
@@ -94,6 +99,7 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
             let n = AppState.shared.sitesManual.split(whereSeparator: \.isNewline).filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }.count
             return n == 1 ? "1 site" : "\(n) sites"
         case .instagram: return AppState.shared.social.map { $0.username.isEmpty ? "" : "@\($0.username)" } ?? ""
+        case .phone: return "jumelage activé"
         default: return "connecté"
         }
     }
@@ -179,12 +185,12 @@ private struct ConnectSheet: View {
             if let error { Text(error).font(.system(size: 11.5)).foregroundColor(.red).fixedSize(horizontal: false, vertical: true) }
             if done { Label("Connecté", systemImage: "checkmark.circle.fill").foregroundColor(.green).font(.system(size: 12.5, weight: .semibold)) }
             HStack {
-                if kind.isConnected && kind != .sites {
+                if kind.isConnected && kind != .sites && kind != .phone {
                     Button("Déconnecter", role: .destructive) { disconnect() }
                 }
                 Spacer()
                 Button("Annuler", action: close).keyboardShortcut(.cancelAction)
-                Button(busy ? "Vérification…" : (kind == .sites ? "Enregistrer" : "Se connecter")) { connect() }
+                Button(busy ? "Vérification…" : (kind == .sites ? "Enregistrer" : kind == .phone ? "Terminé" : "Se connecter")) { connect() }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
                     .disabled(busy || !canSubmit)
@@ -216,20 +222,51 @@ private struct ConnectSheet: View {
             }
             .font(.system(size: 11.5))
         case .espace:
-            SecureField("Jeton d’équipe", text: $id).textFieldStyle(.roundedBorder)
+            SecureField("Code d’équipe", text: $id).textFieldStyle(.roundedBorder)
             DisclosureGroup("Plus d’options", isExpanded: $showMore) {
                 TextField("Adresse de l’espace (par défaut espace.oculot.studio)", text: $extra).textFieldStyle(.roundedBorder)
             }
             .font(.system(size: 11.5))
         case .agenda:
-            TextField("Lien du calendrier (https://… ou webcal://…)", text: $id).textFieldStyle(.roundedBorder)
-            Text("Sur agenda.oculot.studio : « S’abonner au calendrier » → Copier le lien. Un lien iCal Google marche aussi.")
-                .font(.system(size: 11)).foregroundColor(.secondary)
+            SecureField("Mot de passe de l’agenda", text: $secret).textFieldStyle(.roundedBorder)
+            if !agendaMembers.isEmpty {
+                Picker("Je suis", selection: $agendaMember) {
+                    Text("Choisis ton prénom").tag(AgendaLogin.Member?.none)
+                    ForEach(agendaMembers) { m in Text(m.name).tag(Optional(m)) }
+                }
+            }
+            DisclosureGroup("Plus d’options", isExpanded: $showMore) {
+                TextField("ou colle un lien iCal (https://… ou webcal://…)", text: $id).textFieldStyle(.roundedBorder)
+            }
+            .font(.system(size: 11.5))
         case .sites:
             Text("Une adresse par ligne. Les sites livrés de l’espace client sont ajoutés tout seuls.")
                 .font(.system(size: 11)).foregroundColor(.secondary)
             TextEditor(text: $sites).font(.system(size: 12, design: .monospaced)).frame(height: 110)
                 .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.secondary.opacity(0.3)))
+        case .phone:
+            Toggle("Autoriser Oli Android à utiliser Claude via ce Mac", isOn: $phoneOn)
+                .onChange(of: phoneOn) { _, on in PhoneBridge.enabled = on }
+            if phoneOn {
+                if let link = PhoneBridge.pairingLink(), let img = PhoneBridge.qrImage(link) {
+                    HStack(alignment: .top, spacing: 14) {
+                        Image(nsImage: img).interpolation(.none).resizable().frame(width: 150, height: 150)
+                            .padding(6).background(Color.white).clipShape(RoundedRectangle(cornerRadius: 8))
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Sur le téléphone : Oli → Connexions → Claude → « Se connecter », puis scanne ce code.")
+                                .font(.system(size: 11.5)).fixedSize(horizontal: false, vertical: true)
+                            Text("Téléphone et Mac sur le même Wi-Fi, Oli lancé.").font(.system(size: 11)).foregroundColor(.secondary)
+                            Button("Copier le lien") {
+                                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(link, forType: .string)
+                            }
+                            Button("Nouveau code (déjumeler)") { PhoneBridge.newToken(); phoneRefresh += 1 }
+                        }
+                    }
+                    .id(phoneRefresh)
+                } else {
+                    Text("Pas de réseau local détecté : connecte le Mac au Wi-Fi.").font(.system(size: 11.5)).foregroundColor(.red)
+                }
+            }
         case .instagram:
             SecureField("Jeton Instagram (IGAA…)", text: $id).textFieldStyle(.roundedBorder)
             Link("Où trouver mon jeton ?", destination: URL(string: "https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/get-started")!)
@@ -252,11 +289,16 @@ private struct ConnectSheet: View {
     }
 
     @State private var hostField = ""
+    @State private var agendaMembers: [AgendaLogin.Member] = []
+    @State private var phoneOn = PhoneBridge.enabled
+    @State private var phoneRefresh = 0
+    @State private var agendaMember: AgendaLogin.Member? = nil
 
     private var canSubmit: Bool {
         switch kind {
         case .email: return id.contains("@") && !secret.isEmpty
-        case .sites: return true
+        case .sites, .phone: return true
+        case .agenda: return !secret.isEmpty || !id.trimmingCharacters(in: .whitespaces).isEmpty
         default: return !id.trimmingCharacters(in: .whitespaces).isEmpty
         }
     }
@@ -275,12 +317,12 @@ private struct ConnectSheet: View {
             id = k.get("mail-address") ?? ""; secret = k.get("mail-password") ?? ""; extra = k.get("mail-name") ?? ""
             hostField = k.get("mail-host") ?? ""; port = k.get("mail-port") ?? ""
         case .espace: id = k.get("espace-token") ?? ""; extra = k.get("espace-url") ?? ""
-        case .agenda: id = k.get("agenda-ics-url") ?? ""
+        case .agenda: id = ""
         case .instagram: id = k.get("instagram-token") ?? ""
         case .github: id = k.get("github-token") ?? ""
         case .vercel: id = k.get("vercel-token") ?? ""
         case .pagespeed: id = k.get("pagespeed-api-key") ?? ""
-        case .sites: break
+        case .sites, .phone: break
         }
     }
 
@@ -314,6 +356,18 @@ private struct ConnectSheet: View {
             let base = extra.trimmingCharacters(in: .whitespaces).isEmpty ? "https://espace.oculot.studio" : extra
             return await check(url: base.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/espace/summary",
                                bearer: value, refused: "Jeton refusé par l’espace client.")
+        case .agenda where !secret.isEmpty:
+            do {
+                if agendaMembers.isEmpty {
+                    let team = try await AgendaLogin.team(password: secret)
+                    agendaMembers = team.members
+                    agendaMember = team.me.flatMap { me in team.members.first { $0.id == me } } ?? AgendaLogin.guess(team.members)
+                }
+                guard let member = agendaMember else { return "Choisis ton prénom, puis « Se connecter »." }
+                let link = try await AgendaLogin.calendarLink(password: secret, member: member.id)
+                id = link
+                return nil
+            } catch { return error.localizedDescription }
         case .agenda:
             let fixed = value.hasPrefix("webcal://") ? "https://" + value.dropFirst(9) : Substring(value)
             guard let url = URL(string: String(fixed)),
@@ -328,7 +382,7 @@ private struct ConnectSheet: View {
         case .vercel:
             return await check(url: "https://api.vercel.com/v2/user", bearer: value,
                                refused: "Jeton Vercel refusé (la connexion de la CLI a peut-être expiré : relance « vercel login »).")
-        case .pagespeed, .sites:
+        case .pagespeed, .sites, .phone:
             return nil
         }
     }
@@ -354,7 +408,7 @@ private struct ConnectSheet: View {
             put("espace-token", value); put("espace-url", extra.trimmingCharacters(in: .whitespaces))
             EspacePoller.shared.pollNow()
         case .agenda:
-            put("agenda-ics-url", value); AgendaPoller.shared.pollNow()
+            put("agenda-ics-url", id.trimmingCharacters(in: .whitespacesAndNewlines)); AgendaPoller.shared.pollNow()
         case .sites:
             AppState.shared.sitesManual = sites; SitesPoller.shared.checkNow()
         case .instagram:
@@ -365,6 +419,8 @@ private struct ConnectSheet: View {
             put("vercel-token", value)
         case .pagespeed:
             put("pagespeed-api-key", value)
+        case .phone:
+            break
         }
     }
 

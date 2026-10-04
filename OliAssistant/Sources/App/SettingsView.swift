@@ -67,6 +67,7 @@ struct SettingsView: View {
     @State private var espaceUrl: String    = KeychainStore.shared.get("espace-url")      ?? ""
     @State private var sitesManual: String  = AppState.shared.sitesManual
     @State private var claudeConnected: Bool = HookServer.claudeHooksInstalled()
+    @AppStorage("authGateOff") private var authGateOff = false
     @State private var mailAddress: String = KeychainStore.shared.get("mail-address") ?? ""
     @State private var mailName: String = KeychainStore.shared.get("mail-name") ?? ""
     @State private var mailPassword: String = KeychainStore.shared.get("mail-password") ?? ""
@@ -227,6 +228,10 @@ struct SettingsView: View {
     // MARK: - General section
 
     @ViewBuilder private var generalSection: some View {
+        GroupBox {
+            Toggle("Déverrouiller Oli avec Touch ID à la première ouverture", isOn: Binding(get: { !authGateOff }, set: { authGateOff = !$0 }))
+                .toggleStyle(.switch).padding(4)
+        }
         GroupBox("Sound") {
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("Enable sounds", isOn: $state.soundEnabled)

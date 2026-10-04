@@ -369,6 +369,16 @@ final class IslandWindowController: NSWindowController {
     }
 
     func expand(to view: IslandView) {
+        // Oculot: Touch ID (or the Mac password) the first time Oli opens in a session.
+        if state.mode != .expanded && view != .greeting && !AuthGate.shared.unlocked && !UserDefaults.standard.bool(forKey: "authGateOff") {
+            fsm.collapse()
+            AuthGate.shared.whenUnlocked { [weak self] in
+                guard let self else { return }
+                self.fsm.openedExternally()
+                self.expand(to: view)
+            }
+            return
+        }
         state.view = view
         if state.mode == .expanded {
             // Already expanded — just switch view

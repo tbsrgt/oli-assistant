@@ -130,6 +130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         SitesPoller.shared.start()
+        if PhoneBridge.enabled { PhoneBridge.shared.start() }
         GithubPoller.shared.start()
         WidgetSnapshotWriter.shared.start()
         NotificationCenter.default.addObserver(self, selector: #selector(openSettingsFromNotification(_:)),

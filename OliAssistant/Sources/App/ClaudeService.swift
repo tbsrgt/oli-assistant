@@ -69,7 +69,7 @@ final class KeychainStore: @unchecked Sendable {
         "github-token",
         // Oculot
         "espace-token", "espace-url",
-        "mail-address", "mail-name", "mail-password", "mail-host", "mail-port",
+        "mail-address", "mail-name", "mail-password", "mail-host", "mail-port", "phone-token",
         "agenda-ics-url", "pagespeed-api-key", "instagram-token", "instagram-user-id",
     ]
 
@@ -752,16 +752,12 @@ final class ClaudeService {
             .first { FileManager.default.isExecutableFile(atPath: $0) }
     }
 
-    private func chatWithClaudeCode(query: String, state: AppState) async {
-        guard let claude = Self.claudeCodePath else {
-            await showError("Claude n’est pas connecté. Ouvre Réglages → Agents → Connecter Claude.", state: state)
-            return
-        }
-        state.stateOverride = .thinking
-        var args = ["-p", query, "--output-format", "json", "--append-system-prompt", systemPrompt,
-                    "--model", Self.claudeCodeModel.rawValue]
-        if let s = claudeCodeSession { args += ["--resume", s] }
-        let result = await Task.detached(priority: .userInitiated) { () -> (String?, String?, String?) in
+    /// One turn with the user's Claude Code: (reply, session id, error). Shared by the chat and the phone.
+    nonisolated static func runClaudeCode(claude: String, prompt: String, session: String?, system: String) async -> (String?, String?, String?) {
+        var args = ["-p", prompt, "--output-format", "json", "--append-system-prompt", system,
+                    "--model", claudeCodeModel.rawValue]
+        if let session { args += ["--resume", session] }
+        return await Task.detached(priority: .userInitiated) { () -> (String?, String?, String?) in
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: claude)
             proc.arguments = args
@@ -784,6 +780,18 @@ final class ClaudeService {
             let isError = (json["is_error"] as? Bool) == true
             return (isError ? nil : text, json["session_id"] as? String, isError ? (text ?? "Erreur de Claude.") : nil)
         }.value
+    }
+
+    /// System prompt used for the phone (same personality as the notch chat).
+    var phoneSystemPrompt: String { systemPrompt + " The user is writing from their phone (Oli Android): keep answers short." }
+
+    private func chatWithClaudeCode(query: String, state: AppState) async {
+        guard let claude = Self.claudeCodePath else {
+            await showError("Claude n’est pas connecté. Ouvre Réglages → Agents → Connecter Claude.", state: state)
+            return
+        }
+        state.stateOverride = .thinking
+        let result = await Self.runClaudeCode(claude: claude, prompt: query, session: claudeCodeSession, system: systemPrompt)
         state.stateOverride = nil
         if let session = result.1 { claudeCodeSession = session }
         if let text = result.0, !text.isEmpty {
