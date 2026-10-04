@@ -753,26 +753,60 @@ final class ClaudeService {
     }
 
     /// One turn with the user's Claude Code: (reply, session id, error). Shared by the chat and the phone.
+    /// Empty folder the chat runs in, so Claude never starts inside the home folder.
+    nonisolated static var chatSandbox: URL {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Application Support/Oli/chat", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true,
+                                                 attributes: [.posixPermissions: 0o700])
+        return dir
+    }
+
+    /// Session ids are short tokens; anything else from the phone is ignored.
+    nonisolated static func isValidSession(_ s: String) -> Bool {
+        !s.isEmpty && s.count <= 64 && s.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+    }
+
     nonisolated static func runClaudeCode(claude: String, prompt: String, session: String?, system: String) async -> (String?, String?, String?) {
-        var args = ["-p", prompt, "--output-format", "json", "--append-system-prompt", system,
-                    "--model", claudeCodeModel.rawValue]
+        let session = session.flatMap { isValidSession($0) ? $0 : nil }
+        let first = await runClaudeCodeOnce(claude: claude, prompt: prompt, session: session, system: system)
+        // An old session (started elsewhere, or expired) cannot be resumed: start a fresh one.
+        if session != nil, first.0 == nil, (first.2 ?? "").localizedCaseInsensitiveContains("conversation") {
+            return await runClaudeCodeOnce(claude: claude, prompt: prompt, session: nil, system: system)
+        }
+        return first
+    }
+
+    private nonisolated static func runClaudeCodeOnce(claude: String, prompt: String, session: String?, system: String) async -> (String?, String?, String?) {
+        // Chat only: web search and reading web pages, no file, shell or MCP tool, no permission prompt.
+        var args = ["-p", "--output-format", "json", "--append-system-prompt", system,
+                    "--model", claudeCodeModel.rawValue,
+                    "--tools", "WebSearch,WebFetch", "--strict-mcp-config", "--permission-mode", "dontAsk"]
         if let session { args += ["--resume", session] }
+        args += ["--", prompt]
+        let cwd = chatSandbox
         return await Task.detached(priority: .userInitiated) { () -> (String?, String?, String?) in
             let proc = Process()
             proc.executableURL = URL(fileURLWithPath: claude)
             proc.arguments = args
-            proc.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+            proc.currentDirectoryURL = cwd
             var env = ProcessInfo.processInfo.environment
             env["TERM_PROGRAM"] = ""          // keep this background session off the Claude Code pill
             let home = FileManager.default.homeDirectoryForCurrentUser.path
             env["PATH"] = [home + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", env["PATH"] ?? ""].joined(separator: ":")
             proc.environment = env
-            let out = Pipe(), err = Pipe()
-            proc.standardOutput = out; proc.standardError = err
+            // stderr goes to a file, so a chatty stderr can never block the stdout pipe.
+            let out = Pipe()
+            let errURL = FileManager.default.temporaryDirectory.appendingPathComponent("oli-claude-\(UUID().uuidString).err")
+            FileManager.default.createFile(atPath: errURL.path, contents: nil)
+            guard let errFile = try? FileHandle(forWritingTo: errURL) else { return (nil, nil, "Impossible de lancer Claude.") }
+            proc.standardOutput = out; proc.standardError = errFile
             do { try proc.run() } catch { return (nil, nil, error.localizedDescription) }
             let data = out.fileHandleForReading.readDataToEndOfFile()
-            let errText = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
             proc.waitUntilExit()
+            try? errFile.close()
+            let errText = String(decoding: (try? Data(contentsOf: errURL)) ?? Data(), as: UTF8.self)
+            try? FileManager.default.removeItem(at: errURL)
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 return (nil, nil, errText.isEmpty ? "Réponse illisible de Claude." : errText)
             }

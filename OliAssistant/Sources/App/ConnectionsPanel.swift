@@ -263,6 +263,10 @@ private struct ConnectSheet: View {
                         }
                     }
                     .id(phoneRefresh)
+                    Toggle("Répondre aux autorisations de Claude Code depuis le téléphone", isOn: $phoneApprovals)
+                        .onChange(of: phoneApprovals) { _, on in PhoneBridge.approvalsEnabled = on }
+                    Text("Désactivé, le téléphone voit seulement tes sessions. Activé, il peut autoriser une commande sur ce Mac : n’utilise-le que sur un Wi-Fi de confiance.")
+                        .font(.system(size: 11)).foregroundColor(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
                     Text("Pas de réseau local détecté : connecte le Mac au Wi-Fi.").font(.system(size: 11.5)).foregroundColor(.red)
                 }
@@ -292,6 +296,7 @@ private struct ConnectSheet: View {
     @State private var agendaMembers: [AgendaLogin.Member] = []
     @State private var phoneOn = PhoneBridge.enabled
     @State private var phoneRefresh = 0
+    @State private var phoneApprovals = PhoneBridge.approvalsEnabled
     @State private var agendaMember: AgendaLogin.Member? = nil
 
     private var canSubmit: Bool {

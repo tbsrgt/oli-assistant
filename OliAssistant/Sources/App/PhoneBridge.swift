@@ -33,6 +33,12 @@ final class PhoneBridge: @unchecked Sendable {
         return t
     }
 
+    /// Answering Claude Code permission requests from the phone: off until the user opts in.
+    @MainActor static var approvalsEnabled: Bool {
+        get { UserDefaults.standard.bool(forKey: "phoneApprovalsEnabled") }
+        set { UserDefaults.standard.set(newValue, forKey: "phoneApprovalsEnabled") }
+    }
+
     @MainActor static func newToken() {
         KeychainStore.shared.remove("phone-token")
         _ = token
@@ -45,6 +51,8 @@ final class PhoneBridge: @unchecked Sendable {
             guard listener == nil else { return }
             let params = NWParameters.tcp
             params.allowLocalEndpointReuse = true
+            // Local network only: never over a VPN tunnel (utun = .other) or cellular.
+            params.prohibitedInterfaceTypes = [.other, .cellular]
             let l = (try? NWListener(using: params, on: NWEndpoint.Port(rawValue: Self.preferredPort)!))
                 ?? (try? NWListener(using: params))
             guard let l else { appendAppLog("oli.log", "Pont téléphone : impossible de créer l’écoute"); return }
@@ -65,8 +73,44 @@ final class PhoneBridge: @unchecked Sendable {
         queue.async { [self] in listener?.cancel(); listener = nil; port = 0 }
     }
 
+    // Limits (all touched on `queue` only).
+    private static let maxConnections = 8
+    private static let maxRequestBytes = 256 * 1024
+    private static let readTimeout: TimeInterval = 10
+    private var openConnections = 0
+    private var failures: [String: [Date]] = [:]
+
+    private static func peer(_ c: NWConnection) -> String {
+        if case .hostPort(let host, _) = c.endpoint { return "\(host)" }
+        return "?"
+    }
+
+    /// 5 bad tokens in 5 minutes from one address → refused for the rest of the window.
+    private func isBlocked(_ ip: String) -> Bool {
+        let recent = (failures[ip] ?? []).filter { $0.timeIntervalSinceNow > -300 }
+        failures[ip] = recent.isEmpty ? nil : recent
+        return recent.count >= 5
+    }
+
+    private func recordFailure(_ ip: String) {
+        queue.async { [self] in
+            failures[ip, default: []].append(Date())
+            if failures[ip]?.count == 5 { appendAppLog("oli.log", "Pont téléphone : \(ip) bloqué 5 min (codes refusés)") }
+        }
+    }
+
     private func accept(_ c: NWConnection) {
+        guard openConnections < Self.maxConnections, !isBlocked(Self.peer(c)) else { c.cancel(); return }
+        openConnections += 1
+        c.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .cancelled, .failed: self?.openConnections -= 1
+            default: break
+            }
+        }
         c.start(queue: queue)
+        // A request must arrive in full within 10 s.
+        queue.asyncAfter(deadline: .now() + Self.readTimeout) { if c.state != .cancelled { c.cancel() } }
         read(c, Data())
     }
 
@@ -75,8 +119,8 @@ final class PhoneBridge: @unchecked Sendable {
             guard let self else { return }
             var buf = buffer
             if let chunk { buf.append(chunk) }
-            if let req = PhoneRequest(buf) { self.handle(req, c) }
-            else if done || error != nil || buf.count > 2 * 1024 * 1024 { c.cancel() }
+            if let req = PhoneRequest(buf, maxBody: Self.maxRequestBytes) { self.handle(req, c) }
+            else if done || error != nil || buf.count > Self.maxRequestBytes { c.cancel() }
             else { self.read(c, buf) }
         }
     }
@@ -90,6 +134,7 @@ final class PhoneBridge: @unchecked Sendable {
     private func handle(_ req: PhoneRequest, _ c: NWConnection) {
         Task { @MainActor in
             guard Self.constantTimeEqual(req.headers["authorization"] ?? "", "Bearer \(Self.token)") else {
+                self.recordFailure(Self.peer(c))
                 return self.reply(c, "401 Unauthorized", ["error": "Jumelage invalide : rescanne le QR code."])
             }
             switch (req.method, req.path) {
@@ -120,6 +165,9 @@ final class PhoneBridge: @unchecked Sendable {
                 let j = (try? JSONSerialization.jsonObject(with: req.body) as? [String: Any]) ?? [:]
                 guard let allow = j["allow"] as? Bool else {
                     return self.reply(c, "400 Bad Request", ["error": "Réponse manquante."])
+                }
+                guard Self.approvalsEnabled else {
+                    return self.reply(c, "403 Forbidden", ["error": "Active « Répondre aux autorisations depuis le téléphone » dans Oli sur le Mac."])
                 }
                 guard let pending = AppState.shared.pendingApproval, Self.approvalId(pending) == id else {
                     return self.reply(c, "410 Gone", ["error": "Cette demande n’attend plus de réponse."])
@@ -166,7 +214,7 @@ final class PhoneBridge: @unchecked Sendable {
                               "summary": "\(a.tool) : \(String(a.command.prefix(80)))",
                               "detail": String(a.command.prefix(2000))])
         }
-        return ["sessions": sessions, "approvals": approvals]
+        return ["sessions": sessions, "approvals": approvalsEnabled ? approvals : [], "approvalsEnabled": approvalsEnabled]
     }
 
     static func constantTimeEqual(_ a: String, _ b: String) -> Bool {
@@ -224,7 +272,7 @@ struct PhoneRequest {
     let headers: [String: String]
     let body: Data
 
-    init?(_ data: Data) {
+    init?(_ data: Data, maxBody: Int = 256 * 1024) {
         guard let sep = data.range(of: Data("\r\n\r\n".utf8)),
               let head = String(data: data[..<sep.lowerBound], encoding: .utf8) else { return nil }
         var lines = head.components(separatedBy: "\r\n")
@@ -235,7 +283,8 @@ struct PhoneRequest {
             guard let i = l.firstIndex(of: ":") else { continue }
             h[l[..<i].lowercased()] = l[l.index(after: i)...].trimmingCharacters(in: .whitespaces)
         }
-        let length = Int(h["content-length"] ?? "0") ?? 0
+        // Reject negative, absurd or unparsable lengths (a negative one used to crash subdata).
+        guard let length = Int(h["content-length"] ?? "0"), (0...maxBody).contains(length) else { return nil }
         guard data.count - sep.upperBound >= length else { return nil }
         method = String(first[0]); path = String(first[1].split(separator: "?").first ?? ""); headers = h
         body = data.subdata(in: sep.upperBound..<(sep.upperBound + length))
