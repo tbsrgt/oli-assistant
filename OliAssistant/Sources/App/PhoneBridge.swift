@@ -9,6 +9,8 @@ import CoreImage.CIFilterBuiltins
 // uses it to chat with Claude through this Mac (the user's own Claude Code subscription).
 //   GET  /v1/status  → {"name","claude","model"}
 //   POST /v1/chat    {"message","session"} → {"reply","session"} | {"error"}
+//   GET  /v1/claude/sessions → {"sessions":[{id,project,state,activity,updatedAt}],"approvals":[{id,project,tool,summary,detail}]}
+//   POST /v1/claude/approvals/<id> {"allow":bool} → {"ok":true}
 
 final class PhoneBridge: @unchecked Sendable {
     static let shared = PhoneBridge()
@@ -87,7 +89,7 @@ final class PhoneBridge: @unchecked Sendable {
 
     private func handle(_ req: PhoneRequest, _ c: NWConnection) {
         Task { @MainActor in
-            guard req.headers["authorization"] == "Bearer \(Self.token)" else {
+            guard Self.constantTimeEqual(req.headers["authorization"] ?? "", "Bearer \(Self.token)") else {
                 return self.reply(c, "401 Unauthorized", ["error": "Jumelage invalide : rescanne le QR code."])
             }
             switch (req.method, req.path) {
@@ -111,10 +113,69 @@ final class PhoneBridge: @unchecked Sendable {
                 } else {
                     self.reply(c, "502 Bad Gateway", ["error": err ?? "Claude n’a pas répondu."])
                 }
+            case ("GET", "/v1/claude/sessions"):
+                self.reply(c, "200 OK", Self.claudeSnapshot())
+            case ("POST", let path) where path.hasPrefix("/v1/claude/approvals/"):
+                let id = String(path.dropFirst("/v1/claude/approvals/".count))
+                let j = (try? JSONSerialization.jsonObject(with: req.body) as? [String: Any]) ?? [:]
+                guard let allow = j["allow"] as? Bool else {
+                    return self.reply(c, "400 Bad Request", ["error": "Réponse manquante."])
+                }
+                guard let pending = AppState.shared.pendingApproval, Self.approvalId(pending) == id else {
+                    return self.reply(c, "410 Gone", ["error": "Cette demande n’attend plus de réponse."])
+                }
+                appendAppLog("oli.log", "Pont téléphone : autorisation \(pending.tool) \(allow ? "accordée" : "refusée") depuis le téléphone")
+                HookServer.shared.sendApprovalDecision(allow ? "allow" : "deny")
+                self.reply(c, "200 OK", ["ok": true])
             default:
                 self.reply(c, "404 Not Found", ["error": "Inconnu."])
             }
         }
+    }
+
+    // MARK: Claude Code
+
+    @MainActor static func approvalId(_ a: ApprovalInfo) -> String {
+        var h: UInt64 = 1469598103934665603
+        for b in (a.sessionId + "|" + a.tool + "|" + a.inputKey).utf8 { h = (h ^ UInt64(b)) &* 1099511628211 }
+        return String(h, radix: 36)
+    }
+
+    @MainActor static func claudeSnapshot() -> [String: Any] {
+        let state = AppState.shared
+        let agents = state.tasks.filter { $0.source == .claudeCode || $0.id == "integration_claude" || $0.id.hasPrefix("agent_") }
+        let sessions: [[String: Any]] = agents.map { t in
+            let s: String
+            switch t.state {
+            case .working, .thinking, .searching: s = "working"
+            case .approval, .question: s = "waiting"
+            case .finished: s = "done"
+            default: s = "idle"
+            }
+            let project = t.sessionCwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? t.name
+            let activity = t.finalLine ?? (t.steps.indices.contains(t.stepIndex) ? t.steps[t.stepIndex] : "")
+            let at = state.taskUpdatedAt[t.id] ?? Date()
+            return ["id": t.id, "project": project, "state": s, "activity": String(activity.prefix(200)),
+                    "updatedAt": Int(at.timeIntervalSince1970)]
+        }
+        var approvals: [[String: Any]] = []
+        if let a = state.pendingApproval {
+            let task = state.tasks.first { $0.id == a.pillId }
+            let project = task?.sessionCwd.map { URL(fileURLWithPath: $0).lastPathComponent } ?? task?.name ?? "Claude Code"
+            approvals.append(["id": approvalId(a), "project": project, "tool": a.tool,
+                              "summary": "\(a.tool) : \(String(a.command.prefix(80)))",
+                              "detail": String(a.command.prefix(2000))])
+        }
+        return ["sessions": sessions, "approvals": approvals]
+    }
+
+    static func constantTimeEqual(_ a: String, _ b: String) -> Bool {
+        let x = Array(a.utf8), y = Array(b.utf8)
+        var diff = UInt8(x.count == y.count ? 0 : 1)
+        for i in 0..<max(x.count, y.count) {
+            diff |= (i < x.count ? x[i] : 0) ^ (i < y.count ? y[i] : 0)
+        }
+        return diff == 0
     }
 
     // MARK: Pairing
