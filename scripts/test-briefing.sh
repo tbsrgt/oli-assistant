@@ -5,5 +5,5 @@ cd "$(dirname "$0")/.."
 TEST_DIR="$(mktemp -d "${TMPDIR:-/tmp}/oli-briefing.XXXXXX")"
 trap 'rm -rf "$TEST_DIR"' EXIT
 swiftc -parse-as-library -swift-version 6 -strict-concurrency=complete \
-    Oli/Sources/Engines/Briefing.swift scripts/test-briefing.swift -o "$TEST_DIR/test-briefing"
+    OliAssistant/Sources/App/Briefing.swift scripts/test-briefing.swift -o "$TEST_DIR/test-briefing"
 "$TEST_DIR/test-briefing"

@@ -1,30 +1,31 @@
 # Oli Assistant — guide pour les agents
 
-App macOS (Swift 6, SwiftUI + AppKit) qui vit dans l’encoche : l’assistant d’Oculot Studio.
+App macOS native (`OliAssistant/`, Swift 6, SwiftUI + AppKit) : Oli, la mascotte d’Oculot Studio,
+vit dans l’encoche du MacBook et affiche l’état du studio (Claude Code, espace client, sites,
+agenda, Instagram), avec un terminal intégré.
 
-## Organisation (`Oli/Sources/`)
-- `App/` — point d’entrée, barre des menus, raccourcis globaux, déclencheurs Debug.
-- `Core/` — `OliModel` (état unique), `Secrets` (Trousseau), `Theme` (charte), `Chimes` (sons
-  synthétisés), `BriefingDesk`.
-- `Notch/` — fenêtre de l’encoche (pliée / dépliée), rail, en-têtes.
-- `Mascot/` — Oli dessiné en Canvas, humeurs calme / travail / attente / content / alarme.
-- `Sections/` — Aujourd’hui, Claude Code, Projets, Sites, Agenda, Instagram ; composants communs.
-- `Claude/` — pont HTTP local, sessions, installation des hooks.
-- `Engines/` — moteurs purs et testables (sites, audits, espace, agenda, Instagram, briefing).
-- `Watchers/` — rafraîchissements périodiques et alertes.
-- `Terminal/`, `Chat/`, `Settings/`.
+## Où sont les choses
+- `OliAssistant/Sources/App/` — tout le code Swift. `OliAssistant/Resources/sounds/` — les sons.
+- `OliAssistant/project.yml` — projet XcodeGen (ne jamais éditer le `.xcodeproj`, il est généré).
+- `OliAssistant/Sources/App/PillCatalog.swift` — catalogue des pastilles (identifiants stables).
+- Moteurs Oculot : `SiteCheck.swift` / `SiteAudit.swift` / `SitesPoller.swift` (sites),
+  `EspacePoller.swift` (espace client), `AgendaICS.swift` / `AgendaPoller.swift` (agenda),
+  `Social.swift` / `SocialPoller.swift` (Instagram), `Briefing.swift` / `BriefingCenter.swift`,
+  `OculotHomeView.swift` (accueil), `OliTerminal.swift` (terminal SwiftTerm).
+- `docs/PLAN.md` — plan par phases. `tools/sounds-gen.py` — génère les sons.
 
 ## Construire
 ```
-cd Oli && xcodegen && xcodebuild -scheme Oli -configuration Debug -derivedDataPath ../.build -skipPackagePluginValidation build
+cd OliAssistant && xcodegen && xcodebuild -scheme Oli -configuration Debug -derivedDataPath ../.build -skipPackagePluginValidation build
 ```
-Le `.xcodeproj` est généré (ignoré par git). SwiftTerm épinglé en 1.11.2 (pas de Metal Toolchain).
+SwiftTerm est épinglé en 1.11.2 (les versions suivantes exigent le Metal Toolchain).
 
 ## Règles
-- Concurrence stricte Swift 6. Une seule dépendance : SwiftTerm.
+- Swift 6, concurrence stricte. Pas de dépendance tierce sauf indispensable (SwiftTerm l’est).
 - Secrets dans le Trousseau uniquement. Aucune télémétrie.
-- Le relais des hooks ne bloque jamais Claude Code.
-- `~/.claude/settings.json` : copie datée, aperçu, écriture seulement après un clic.
-- Jamais d’envoi, de publication ou d’autorisation sans clic explicite.
-- Rien ne tourne quand l’encoche est repliée et calme.
-- Interface en français, ton Oculot ; charte : Bricolage Grotesque, tomate, beurre.
+- Ne jamais bloquer Claude Code : si l’app ne répond pas, le hook sort tout de suite.
+- Ne jamais écraser `~/.claude/settings.json` : sauvegarde datée, fusion, diff, accord explicite.
+- Ne jamais envoyer un mail ni accepter une autorisation sans clic explicite.
+- 0 % CPU quand l’îlot est caché.
+- Les identifiants de pastilles sont des contrats stables : ne jamais les renommer.
+- Textes de l’interface en français, ton Oculot (chaleureux, direct, sans jargon).

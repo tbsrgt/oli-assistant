@@ -1,6 +1,6 @@
 // Vérifie quelques URLs réelles avec le moteur de surveillance des sites (SiteCheck.swift).
 // Compilation seule :
-//   swiftc -parse-as-library Oli/Sources/Engines/SiteCheck.swift scripts/test-sites.swift -o /tmp/test-sites && /tmp/test-sites
+//   swiftc -parse-as-library OliAssistant/Sources/App/SiteCheck.swift scripts/test-sites.swift -o /tmp/test-sites && /tmp/test-sites
 // ou : scripts/test-sites.sh [url …]
 
 import Foundation

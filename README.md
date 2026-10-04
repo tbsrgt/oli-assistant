@@ -1,72 +1,64 @@
 # Oli Assistant
 
-L’assistant d’Oculot Studio, dans l’encoche du Mac. Oli est une petite étoile orange qui tient le
-studio au courant, ouvre un terminal sous la main et laisse piloter Claude Code sans quitter ce
-qu’on fait.
+L’assistant d’Oculot Studio, dans l’encoche du Mac. Oli est une petite étoile orange qui tient
+le studio au courant sans qu’on ait à ouvrir dix onglets.
 
 ## Ce qu’il fait
 
-- **Aujourd’hui** : l’essentiel du studio, le plus urgent d’abord (autorisations Claude Code,
-  pannes, retards, rendez-vous, projets, sites, Instagram), et chaque matin « le mot d’Oli ».
-  Le vendredi après-midi, le récap de la semaine.
-- **Claude Code** : toutes les sessions (Terminal, iTerm, VS Code, le terminal d’Oli), ce qu’elles
-  font, et les autorisations à accepter ou refuser d’un clic depuis l’encoche.
-- **Terminal** : de vrais shells en onglets ; « Claude Code » sur un projet ouvre son dépôt et
-  lance Claude directement.
-- **Projets** : l’espace client (espace.oculot.studio) — étapes, échéances, dernier mot au client.
-- **Sites** : toutes les 10 min (HTTP, temps de réponse, certificat), chaque jour (PageSpeed,
-  expiration du domaine, www / domaine nu), chaque semaine (robots, sitemap, liens cassés).
-  Une panne : alarme, Oli rouge et paniqué, encoche ouverte sur le site.
+- **Accueil Oculot** : à l’ouverture, l’essentiel du studio en un coup d’œil (sites, projets,
+  agenda, Instagram), le plus urgent en premier.
+- **Terminal** : un vrai terminal macOS (zsh, couleurs, Claude Code, vim) dans l’encoche.
+  Le shell continue de tourner quand l’encoche est repliée.
+- **Claude Code** : les sessions lancées dans Terminal, iTerm, VS Code ou le terminal d’Oli
+  s’affichent sur la pastille Claude Code ; les autorisations se donnent depuis l’encoche.
+- **Espace client** (espace.oculot.studio) : projets, étapes, échéances, alertes.
+- **Sites clients** : toutes les 10 min (HTTP, temps de réponse, certificat), chaque jour
+  (PageSpeed, expiration du domaine, www / domaine nu), chaque semaine (robots, sitemap,
+  liens cassés). Une panne : son fort, Oli rouge et paniqué, encoche ouverte sur le problème.
 - **Agenda** (agenda.oculot.studio ou Google, lien iCal) : prochain rendez-vous, alerte 10 min avant.
 - **Instagram** (lecture seule) : abonnés, derniers posts, commentaires sans réponse.
-- **Demander à Oli** : un chat Claude qui connaît l’état du studio et peut agir (vérifier les
-  sites, ouvrir le dépôt d’un client).
+- **Briefing du matin et récap du vendredi**, écrits en local, sans IA.
+- **Chat IA** avec l’état d’Oculot en direct (outils avec une clé Anthropic).
 
-Seules les sections branchées apparaissent. Replié, Oli est invisible quand tout est calme.
-
-## Raccourcis
-
-| Touches | Action |
-|---|---|
-| ⌥⌘O | Ouvrir / replier Oli |
-| ⌥⌘T | Terminal |
-| ⌥⌘J | Demander à Oli |
-| Échap | Replier (hors terminal) |
+Seules les pastilles branchées (clé, jeton ou lien renseigné) apparaissent.
 
 ## Construire
 
 Prérequis : Xcode, [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```
-cd Oli
+cd OliAssistant
 xcodegen
 xcodebuild -scheme Oli -configuration Debug -derivedDataPath ../.build -skipPackagePluginValidation build
-codesign --force --deep -s - ../.build/Build/Products/Debug/Oli.app
+```
+
+L’app est dans `.build/Build/Products/Debug/Oli.app`. Signature ad hoc en local :
+
+```
+codesign --force --deep -s - .build/Build/Products/Debug/Oli.app
 ```
 
 ## Tests
 
+Chaque moteur se teste seul, sans lancer l’app :
+
 ```
-scripts/test-bridge.sh     # pont Claude Code, installation des hooks, espace client
 scripts/test-sites.sh      # surveillance des sites (réseau réel)
 scripts/test-briefing.sh   # briefing et récap
-scripts/test-social.sh     # Instagram
+scripts/test-social.sh     # lecture Instagram
 scripts/test-ics.sh        # agenda iCal
 ```
 
-En Debug, `scripts/oli-dev.sh` pilote l’app (open <section>, panne, briefing, allow…).
+En build Debug, des démos : `scripts/sites-demo.sh` (panne), `scripts/briefing-demo.sh [friday]`,
+`scripts/open-island.sh [terminal]`.
 
-## Claude Code
+## Réglages et secrets
 
-Réglages → Claude Code → Installer. Oli montre chaque changement de `~/.claude/settings.json`
-avant d’écrire et garde une copie datée. Le relais (`~/.claude/oli/oli-hook`) envoie les
-événements à Oli en local ; si Oli n’est pas lancé, il sort aussitôt sans rien bloquer.
-
-## Secrets
-
-Tous les jetons vivent dans le Trousseau (service `studio.oculot.oli`), jamais sur le disque ni
-dans git. Aucune télémétrie.
+Tout se règle dans Réglages → Integrations. Les secrets vivent dans le Trousseau macOS
+(service `studio.oculot.oli`), jamais sur le disque ni dans git. Aucune télémétrie : Oli ne parle
+qu’aux services qu’on branche.
 
 ## Licence
 
-© Oculot Studio, tous droits réservés. Composants tiers : `THIRD-PARTY.md`.
+Code sous licence MIT (voir `LICENSE`). Le terminal utilise
+[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) (MIT).

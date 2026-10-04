@@ -1,21 +1,26 @@
-# Projet Xcode généré par XcodeGen
-Oli/Oli.xcodeproj/
-xcuserdata/
+# Projet Xcode généré par XcodeGen (OliAssistant/project.yml)
+OliAssistant/OliAssistant.xcodeproj/
+OliAssistant/build/
 *.xcuserstate
+xcuserdata/
 
 # Builds locaux
 .build/
-.build2/
 DerivedData/
-
-# Secrets locaux, jamais dans git
-.env
-.env.*
 
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
 *.icloud
 
 # Local uniquement
 .claude/
 _prive/
+
+# Secrets locaux, jamais dans git
+.env
+.env.*
+
+# Builds locaux
+.build2/

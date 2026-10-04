@@ -1,0 +1,77 @@
+name: OliAssistant
+options:
+  bundleIdPrefix: studio.oculot
+  deploymentTarget:
+    macOS: "15.0"
+  xcodeVersion: "27.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Manual
+    OTHER_SWIFT_FLAGS: "-strict-concurrency=complete"
+  configs:
+    Debug:
+      CODE_SIGNING_REQUIRED: NO
+      CODE_SIGNING_ALLOWED: NO
+    Release:
+      CODE_SIGNING_REQUIRED: NO
+      CODE_SIGNING_ALLOWED: NO
+
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.11.2   # last release without Metal shaders
+
+schemes:
+  Oli:
+    build:
+      targets:
+        Oli: all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
+targets:
+  Oli:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        type: group
+      - path: Assets.xcassets
+        buildPhase: resources
+      - path: Resources/sounds
+        buildPhase: resources
+        type: folder
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleName: Oli
+        CFBundleDisplayName: Oli
+        CFBundleIdentifier: studio.oculot.oli
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "1.0.0"
+        CFBundlePackageType: APPL
+        LSUIElement: YES
+        NSHighResolutionCapable: YES
+        NSSupportsAutomaticGraphicsSwitching: YES
+        NSHumanReadableCopyright: "Oli Assistant · Oculot Studio"
+        NSAppleEventsUsageDescription: "Pour sauter au terminal, ouvrir Claude Code sur le dépôt d’un client, envoyer des mails et piloter Musique."
+        NSAccessibilityUsageDescription: "Pour lire le titre de la fenêtre active et l'attacher comme contexte."
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: studio.oculot.oli
+        PRODUCT_NAME: Oli
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/Oli.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        ENABLE_SANDBOX: NO
+    dependencies:
+      - package: SwiftTerm
