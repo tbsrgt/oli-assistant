@@ -21,6 +21,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupIsland()
     }
 
+    // MARK: - URL scheme oli://
+
+    /// `oli://` (clic sur le widget, ou `open oli://`) : déplie l'encoche.
+    /// `oli://reglages` ouvre les réglages.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let url = urls.first(where: { $0.scheme?.lowercased() == "oli" }) else { return }
+        if url.host?.lowercased() == "reglages" { openSettings(); return }
+        islandController?.openFromURL()
+    }
+
     // MARK: - Menu bar
 
     private func setupMenuBarItem() {
@@ -110,6 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         SitesPoller.shared.start()
         GithubPoller.shared.start()
+        WidgetSnapshotWriter.shared.start()
         NotificationCenter.default.addObserver(self, selector: #selector(openSettingsFromNotification(_:)),
                                                name: .openFullSettings, object: nil)
         // After the greeting ends, fly Oli back to the desktop if it was there at last quit

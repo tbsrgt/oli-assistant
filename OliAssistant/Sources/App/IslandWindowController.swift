@@ -362,6 +362,12 @@ final class IslandWindowController: NSWindowController {
         }
     }
 
+    /// Lien `oli://` (clic sur le widget) : déplie l'encoche comme un survol.
+    func openFromURL() {
+        fsm.openedExternally()
+        expand(to: BriefingCenter.shared.viewForHover() ?? defaultView())
+    }
+
     func expand(to view: IslandView) {
         state.view = view
         if state.mode == .expanded {
