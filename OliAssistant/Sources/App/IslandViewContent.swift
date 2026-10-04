@@ -533,18 +533,23 @@ struct ErrorView: View {
     @ObservedObject var state: AppState
 
     var body: some View {
+        let (title, hint) = ErrorView.explain(state.focusTask?.finalLine)
         ZStack {
             CardBackground(wash: .red)
             VStack(alignment: .leading, spacing: 5) {
-                AgentWho(task: state.focusTask, label: "n8n")
-                Text("Workflow stopped.")
+                AgentWho(task: state.focusTask, label: "Claude Code s’est arrêté")
+                Text(title)
                     .font(.system(size: 15, weight: .semibold))
-                Text("Gmail node timed out after 30s. Retry or open n8n.")
+                    .lineLimit(1)
+                Text(hint)
                     .font(.system(size: 12))
                     .foregroundColor(Color(hex: "#FF8D97"))
+                    .lineLimit(2)
                 HStack(spacing: 8) {
-                    PrimaryButton("Retry") { /* retry */ }
-                    SecondaryButton("Open in n8n") { /* open */ }
+                    PrimaryButton("Ouvrir le terminal") { state.view = .terminal }
+                    SecondaryButton("OK") {
+                        NotificationCenter.default.post(name: .islandCollapse, object: nil)
+                    }
                 }
             }
             .padding(.leading, 116)
@@ -552,6 +557,28 @@ struct ErrorView: View {
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Turns the StopFailure reason (stored in finalLine) into a short French title and a next step.
+    static func explain(_ reason: String?) -> (String, String) {
+        let r = (reason ?? "").lowercased()
+        if r.contains("rate") || r.contains("limit") || r.contains("429") {
+            return ("Limite d’utilisation atteinte.", "Attends un peu, puis relance la session dans le terminal.")
+        }
+        if r.contains("auth") || r.contains("401") || r.contains("login") {
+            return ("Claude n’est plus connecté.", "Tape /login dans le terminal pour te reconnecter.")
+        }
+        if r.contains("billing") || r.contains("credit") || r.contains("quota") {
+            return ("Problème d’abonnement ou de crédits.", "Vérifie ton compte Claude, puis relance.")
+        }
+        if r.contains("overload") || r.contains("server") || r.contains("500") || r.contains("529") {
+            return ("Les serveurs de Claude sont surchargés.", "Ce n’est pas toi : réessaie dans une minute.")
+        }
+        if r.contains("context") || r.contains("too long") || r.contains("prompt") {
+            return ("La conversation est trop longue.", "Tape /compact dans le terminal, puis continue.")
+        }
+        let detail = (reason ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return ("La session a échoué.", detail.isEmpty ? "Regarde le terminal pour le détail." : String(detail.prefix(140)))
     }
 }
 

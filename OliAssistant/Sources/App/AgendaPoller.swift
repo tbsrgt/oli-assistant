@@ -91,7 +91,11 @@ final class AgendaPoller: @unchecked Sendable {
         }
         guard let next = due.first else { return }
         due.forEach { alertedIds.insert($0.id) }
-        guard let idx = app.tasks.firstIndex(where: { $0.id == "integration_agenda" }) else { return }
+        guard let idx = app.tasks.firstIndex(where: { $0.id == "integration_agenda" }) else {
+            // No Agenda mini Oli on screen: never drop the reminder, send it to the Notification Center.
+            SystemNotify.post(title: "Dans 10 min : \(next.title)", body: next.timeLabel, id: "agenda-\(next.id)")
+            return
+        }
 
         app.tasks[idx].state = .question
         app.tasks[idx].steps = ["\(next.timeLabel) · \(next.title)"]

@@ -817,7 +817,13 @@ final class ClaudeService {
     }
 
     /// System prompt used for the phone (same personality as the notch chat).
-    var phoneSystemPrompt: String { systemPrompt + " The user is writing from their phone (Oli Android): keep answers short." }
+    var phoneSystemPrompt: String { claudeCodeSystemPrompt + "\n\nThe user is writing from their phone (Oli Android): keep answers short." }
+
+    /// Claude Code mode has no Oculot tools: the live data and the detailed lists go straight in the prompt.
+    var claudeCodeSystemPrompt: String {
+        liveSystemPrompt + "\n\nDétail des projets de l'espace client :\n" + runOculotTool("espace_projets", input: [:])
+            + "\n\nDétail des sites surveillés :\n" + runOculotTool("etat_sites", input: [:])
+    }
 
     private func chatWithClaudeCode(query: String, state: AppState) async {
         guard let claude = Self.claudeCodePath else {
@@ -825,7 +831,7 @@ final class ClaudeService {
             return
         }
         state.stateOverride = .thinking
-        let result = await Self.runClaudeCode(claude: claude, prompt: query, session: claudeCodeSession, system: systemPrompt)
+        let result = await Self.runClaudeCode(claude: claude, prompt: query, session: claudeCodeSession, system: claudeCodeSystemPrompt)
         state.stateOverride = nil
         if let session = result.1 { claudeCodeSession = session }
         if let text = result.0, !text.isEmpty {

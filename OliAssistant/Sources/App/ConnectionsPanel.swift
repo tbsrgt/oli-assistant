@@ -411,17 +411,22 @@ private struct ConnectSheet: View {
             put("mail-host", hostField.trimmingCharacters(in: .whitespaces)); put("mail-port", port.trimmingCharacters(in: .whitespaces))
         case .espace:
             put("espace-token", value); put("espace-url", extra.trimmingCharacters(in: .whitespaces))
-            EspacePoller.shared.pollNow()
+            EspacePoller.shared.pollNow(); AppState.shared.activatePill("integration_espace")
         case .agenda:
             put("agenda-ics-url", id.trimmingCharacters(in: .whitespacesAndNewlines)); AgendaPoller.shared.pollNow()
+            AppState.shared.activatePill("integration_agenda")
         case .sites:
             AppState.shared.sitesManual = sites; SitesPoller.shared.checkNow()
+            if !sites.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { AppState.shared.activatePill("integration_sites") }
         case .instagram:
             put("instagram-token", value); SocialPoller.shared.refreshNow()
+            AppState.shared.activatePill("integration_instagram")
         case .github:
             put("github-token", value); GithubPoller.shared.triggerPulseNow()
+            AppState.shared.activatePill("integration_github")
         case .vercel:
             put("vercel-token", value)
+            AppState.shared.activatePill("integration_vercel")
         case .pagespeed:
             put("pagespeed-api-key", value)
         case .phone:
@@ -431,7 +436,16 @@ private struct ConnectSheet: View {
 
     private func disconnect() {
         kind.keys.forEach { KeychainStore.shared.remove($0) }
-        if kind == .instagram { AppState.shared.social = nil }
+        // Forget what the service had shown, so nothing stale stays on screen or in the widget.
+        let app = AppState.shared
+        switch kind {
+        case .instagram: app.social = nil
+        case .agenda: app.agendaEvents = []
+        case .espace: app.espaceClients = []
+        case .github: app.githubPulse = nil; app.githubActivity = nil; app.githubStats = nil
+        case .vercel: app.vercelDeployments = []
+        default: break
+        }
         close()
     }
 

@@ -500,6 +500,12 @@ final class HookServer: @unchecked Sendable {
 
         case "StopFailure":
             state.updateTask(id: agentId, state: .error)
+            // Keep the reason so the error card can explain it (error type, details or last message).
+            let reason = [payload["error"], payload["error_type"], payload["error_details"], payload["last_assistant_message"]]
+                .compactMap { $0 as? String }.filter { !$0.isEmpty }.joined(separator: " — ")
+            if let idx = state.tasks.firstIndex(where: { $0.id == agentId }) {
+                state.tasks[idx].finalLine = reason.isEmpty ? nil : DiffEngine.toOneLine(reason)
+            }
             SoundEngine.shared.play("error")
             if focused {
                 expandIfNeeded(to: .error)

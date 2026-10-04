@@ -92,13 +92,6 @@ struct SettingsView: View {
     @State private var loadingVercel: Bool = false
 
 
-    // Bindings in minutes for the absence field
-    private var absenceMinutes: Binding<Double> {
-        Binding(
-            get: { state.absenceInterval / 60 },
-            set: { state.absenceInterval = max(1, $0) * 60 }
-        )
-    }
 
     // Sidebar selection persisted across sessions
     @AppStorage("settingsSection") private var selectedSection: String = "general"
@@ -248,21 +241,14 @@ struct SettingsView: View {
             .padding(6)
         }
 
-        GroupBox("Behavior") {
+        GroupBox("Comportement") {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text("Close after")
-                    TextField("60", value: $state.autoCloseInterval, format: .number)
+                    Text("Refermer Oli après")
+                    TextField("15", value: $state.autoCloseInterval, format: .number)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 64)
-                    Text("s inactive")
-                }
-                HStack(spacing: 8) {
-                    Text("Hide after")
-                    TextField("3", value: absenceMinutes, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 48)
-                    Text("min without movement")
+                    Text("s sans activité")
                 }
             }
             .padding(6)

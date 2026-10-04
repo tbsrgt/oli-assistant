@@ -51,7 +51,7 @@ final class SocialPoller {
         running = false
         let app = AppState.shared
         app.social = snap
-        guard let idx = app.tasks.firstIndex(where: { $0.id == Self.pillId }) else { return }
+        let idx = app.tasks.firstIndex(where: { $0.id == Self.pillId })
 
         // Unanswered comments: keyed by comment ids, so only a new comment is announced again.
         // Quiet account: keyed without the number of days, so it is announced once, not every day.
@@ -63,6 +63,11 @@ final class SocialPoller {
         let fresh = keyed.filter { alerted.insert($0.key).inserted }.map(\.text)
         alerted = alerted.filter { k in keyed.contains { $0.key == k } }
         guard !fresh.isEmpty else { return }
+        guard let idx else {
+            // No Instagram mini Oli on screen: send the news to the Notification Center instead of dropping it.
+            SystemNotify.post(title: "Instagram", body: fresh.joined(separator: "\n"), id: "instagram-\(UUID().uuidString)")
+            return
+        }
 
         app.tasks[idx].state = .question
         app.tasks[idx].steps = fresh.map { "Instagram : \($0)" }
