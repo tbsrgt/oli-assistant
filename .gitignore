@@ -23,7 +23,7 @@ _prive/
 .env.*
 
 # Builds locaux
-.build2/
+.build*/
 
 # Captures de référence locales (montrent le bureau)
 docs/reference/

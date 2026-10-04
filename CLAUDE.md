@@ -12,6 +12,7 @@ agenda, Instagram), avec un terminal intégré.
   `EspacePoller.swift` (espace client), `AgendaICS.swift` / `AgendaPoller.swift` (agenda),
   `Social.swift` / `SocialPoller.swift` (Instagram), `Briefing.swift` / `BriefingCenter.swift`,
   `OculotHomeView.swift` (accueil), `OliTerminal.swift` (terminal SwiftTerm).
+- `OliAssistant/Widget/` — widget WidgetKit (lit l’instantané `Sources/Shared/OliWidgetSnapshot.swift` écrit par `WidgetSnapshotWriter.swift`).
 - `docs/PLAN.md` — plan par phases. `tools/sounds-gen.py` — génère les sons.
 
 ## Construire

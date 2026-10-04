@@ -32,11 +32,24 @@ xcodegen
 xcodebuild -scheme Oli -configuration Debug -derivedDataPath ../.build -skipPackagePluginValidation build
 ```
 
-L’app est dans `.build/Build/Products/Debug/Oli.app`. Signature ad hoc en local :
+L’app est dans `.build/Build/Products/Debug/Oli.app`, déjà signée ad hoc par Xcode (l’app et son
+widget). Ne pas la re-signer avec `codesign --deep` : ça effacerait les droits du widget (sandbox),
+et WidgetKit l’ignorerait. S’il faut re-signer à la main, le widget d’abord, puis l’app :
 
 ```
-codesign --force --deep -s - .build/Build/Products/Debug/Oli.app
+APP=.build/Build/Products/Debug/Oli.app
+codesign --force -s - --entitlements OliAssistant/Widget/OliWidget.entitlements "$APP/Contents/PlugIns/OliWidget.appex"
+codesign --force -s - --entitlements OliAssistant/Resources/Oli.entitlements "$APP"
 ```
+
+## Widget
+
+`OliAssistant/Widget/` : widget WidgetKit (petit et moyen) pour le bureau et le Centre de
+notifications. L’app écrit un instantané `~/Library/Application Support/Oli/widget/snapshot.json`
+(sites, prochain projet, prochains rendez-vous) ; le widget, sandboxé, n’a le droit de lire que ce
+dossier (exception de sandbox en lecture seule : pas besoin d’App Group ni d’équipe Apple). Un clic
+ouvre `oli://`, qui déplie l’encoche. Le widget apparaît dans la galerie une fois l’app lancée
+depuis son emplacement définitif.
 
 ## Tests
 
