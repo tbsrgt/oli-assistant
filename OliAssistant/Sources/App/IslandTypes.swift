@@ -167,6 +167,15 @@ enum IslandConst {
     static let earRadius: CGFloat   = 14
     /// Concave fillet joining the unfolded island to the top edge of the screen.
     static let expandedFlare: CGFloat = 18
+    static let compactFlare: CGFloat = 10
+    /// Fillet size per mode: none while hidden behind the notch.
+    static func flare(for mode: IslandMode) -> CGFloat {
+        switch mode {
+        case .expanded: return expandedFlare
+        case .compact:  return compactFlare
+        case .hidden:   return 0
+        }
+    }
     static let roundedCorner: CGFloat = 14    // hidden/peek/compact
     static let expandedCorner: CGFloat = 22
 

@@ -131,7 +131,7 @@ struct IslandContainer: View {
                 islandHeight     = (newMode == .expanded && state.view == .prompt) ? chatPromptHeight : h
                 cornerRadius     = cr
                 islandTopRadius  = tr
-                islandFlare      = newMode == .expanded ? IslandConst.expandedFlare : 0
+                islandFlare      = IslandConst.flare(for: newMode)
             }
         }
         .onChange(of: state.view) { _, newView in
@@ -161,7 +161,7 @@ struct IslandContainer: View {
             islandHeight     = state.view == .prompt ? chatPromptHeight : h
             cornerRadius     = state.mode == .expanded ? IslandConst.expandedCorner : IslandConst.roundedCorner
             islandTopRadius  = 0
-            islandFlare      = state.mode == .expanded ? IslandConst.expandedFlare : 0
+            islandFlare      = IslandConst.flare(for: state.mode)
         }
         .onReceive(NotificationCenter.default.publisher(for: .botGreet)) { _ in
             greetNotif.toggle()
