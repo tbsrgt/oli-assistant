@@ -1,0 +1,21 @@
+# Projet Xcode généré par XcodeGen
+Oli/Oli.xcodeproj/
+xcuserdata/
+*.xcuserstate
+
+# Builds locaux
+.build/
+.build2/
+DerivedData/
+
+# Secrets locaux, jamais dans git
+.env
+.env.*
+
+# macOS
+.DS_Store
+*.icloud
+
+# Local uniquement
+.claude/
+_prive/

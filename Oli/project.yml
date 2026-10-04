@@ -1,0 +1,67 @@
+name: Oli
+options:
+  bundleIdPrefix: studio.oculot
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+    OTHER_SWIFT_FLAGS: "-strict-concurrency=complete"
+
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.11.2   # last release without Metal shaders
+
+schemes:
+  Oli:
+    build:
+      targets:
+        Oli: all
+    run:
+      config: Debug
+
+targets:
+  Oli:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        type: group
+      - path: Assets.xcassets
+        buildPhase: resources
+      - path: Resources/Fonts
+        buildPhase: resources
+        type: folder
+    info:
+      path: Resources/Info.plist
+      properties:
+        CFBundleName: Oli
+        CFBundleDisplayName: Oli
+        CFBundleIdentifier: studio.oculot.oli
+        CFBundleVersion: "2"
+        CFBundleShortVersionString: "2.0.0"
+        CFBundlePackageType: APPL
+        LSUIElement: YES
+        NSHighResolutionCapable: YES
+        NSHumanReadableCopyright: "Oli Assistant · Oculot Studio"
+        NSAppleEventsUsageDescription: "Pour ouvrir les dépôts des clients dans le terminal."
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: studio.oculot.oli
+        PRODUCT_NAME: Oli
+        INFOPLIST_FILE: Resources/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Resources/Oli.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MACOSX_DEPLOYMENT_TARGET: "15.0"
+        ENABLE_SANDBOX: NO
+    dependencies:
+      - package: SwiftTerm
