@@ -536,6 +536,19 @@ final class HookServer: @unchecked Sendable {
     /// "claude" is reserved and rejected so it cannot impersonate the Claude Code pill.
     /// Returns the name unchanged if valid, nil otherwise.
 
+    /// True when ~/.claude/settings.json routes SessionStart and PermissionRequest to Oli's relay.
+    nonisolated static func claudeHooksInstalled() -> Bool {
+        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
+        guard let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let hooks = json["hooks"] as? [String: Any] else { return false }
+        return ["SessionStart", "PermissionRequest"].allSatisfy { ev in
+            ((hooks[ev] as? [[String: Any]]) ?? []).contains { group in
+                ((group["hooks"] as? [[String: Any]]) ?? []).contains { isOliHookCommand($0["command"] as? String) }
+            }
+        }
+    }
+
     /// True for a hook command installed by Oli: its relay script under ~/.claude/oli/ or in
     /// Application Support/Oli/. A loose « contains("oli") » would also match other people's hooks.
     nonisolated static func isOliHookCommand(_ cmd: String?) -> Bool {

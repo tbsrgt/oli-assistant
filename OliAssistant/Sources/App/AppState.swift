@@ -585,7 +585,7 @@ final class AppState: ObservableObject {
         case "ai_lmstudio":           return !lmstudioServerURL.isEmpty
         case "integration_vercel":    return k.get("vercel-token") != nil
         case "integration_github":    return k.get("github-token") != nil
-        case "integration_espace":    return k.get("espace-token") != nil
+        case "integration_espace":    return true   // core of Oculot: always shown, its card asks for the token
         case "integration_agenda":    return k.get("agenda-ics-url") != nil
         case "integration_instagram": return k.get("instagram-token") != nil
         case "integration_sites":     return !sitesManual.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

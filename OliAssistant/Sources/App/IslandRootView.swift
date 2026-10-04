@@ -29,16 +29,18 @@ struct IslandContainer: View {
     @State private var islandTopRadius: CGFloat = 0
     @State private var islandFlare: CGFloat = 0
     @State private var islandWave: CGFloat = 0
+    /// Final size of the unfolded island: content is laid out at this size during the animation.
+    @State private var contentWidth: CGFloat = IslandConst.expandedWidth
+    @State private var contentHeight: CGFloat = 150
     @State private var greetNotif: Bool = false
 
-    private let openSpring = Animation.spring(response: 0.5, dampingFraction: 0.72)
+    // Oculot: no overshoot on the size any more (it fought the wave); the wave carries the bounce.
+    private let openSpring = Animation.spring(response: 0.5, dampingFraction: 0.88)
     private let closeEase  = Animation.timingCurve(0.45, 0, 0.2, 1, duration: 0.34)
     // Oculot: the island pours out of the notch like a wave — width first, then the drop,
     // whose middle leads and ripples once before settling flat.
-    private let pourWidth  = Animation.spring(response: 0.36, dampingFraction: 0.86)
-    private let pourHeight = Animation.spring(response: 0.56, dampingFraction: 0.76).delay(0.04)
-    private let pourWave   = Animation.spring(response: 0.62, dampingFraction: 0.42).delay(0.06)
-    private let retract    = Animation.spring(response: 0.38, dampingFraction: 1.0)
+    private let pourWave   = Animation.spring(response: 0.58, dampingFraction: 0.58).delay(0.05)
+
 
     private var chatPromptHeight: CGFloat {
         let base: CGFloat = 240
@@ -66,42 +68,49 @@ struct IslandContainer: View {
                         cornerRadius: cornerRadius, topRadius: islandTopRadius, flare: islandFlare, wave: islandWave)
                 .fill(Color.black)
 
-            // Content
-            if state.mode == .expanded {
-                if greetingActive {
-                    // Greeting canvas: fixed 640-wide, centered by offset so x=320 aligns with island center
-                    GreetingCanvasView(state: state)
-                        .frame(width: IslandConst.expandedWidth, height: 150)
-                        .offset(x: (islandWidth - IslandConst.expandedWidth) / 2)
-                        .clipShape(IslandShape(width: islandWidth, height: islandHeight,
-                                              cornerRadius: cornerRadius, topRadius: islandTopRadius))
-                        .transition(.opacity)
-                } else if uploadActive {
-                    ZStack(alignment: .topLeading) {
-                        UploadCanvasView(state: state)
-                            .frame(width: islandWidth, height: islandHeight)
+            // Content — one container clipped by the island (wave included), so nothing that
+            // slides or fades in can be seen outside the black shape while it pours out.
+            ZStack(alignment: .top) {
+                if state.mode == .expanded {
+                    if greetingActive {
+                        // Greeting canvas: fixed 640-wide, centered by offset so x=320 aligns with island center
+                        GreetingCanvasView(state: state)
+                            .frame(width: IslandConst.expandedWidth, height: 150)
                             .clipShape(IslandShape(width: islandWidth, height: islandHeight,
                                                   cornerRadius: cornerRadius, topRadius: islandTopRadius))
-                        // Header overlaid: canvas CARD_Y=42 aligns exactly with header bottom,
-                        // matching normal view proportions (8pt top + 34pt header + card + 10pt bottom).
-                        IslandHeader(state: state)
-                            .frame(width: islandWidth, height: 34)
-                            .offset(y: 8)
+                            .transition(.opacity)
+                    } else if uploadActive {
+                        ZStack(alignment: .topLeading) {
+                            UploadCanvasView(state: state)
+                                .frame(width: islandWidth, height: islandHeight)
+                                .clipShape(IslandShape(width: islandWidth, height: islandHeight,
+                                                      cornerRadius: cornerRadius, topRadius: islandTopRadius))
+                            // Header overlaid: canvas CARD_Y=42 aligns exactly with header bottom,
+                            // matching normal view proportions (8pt top + 34pt header + card + 10pt bottom).
+                            IslandHeader(state: state)
+                                .frame(width: islandWidth, height: 34)
+                                .offset(y: 8)
+                        }
+                        .transition(.opacity)
+                    } else {
+                        // Laid out once at its final size and revealed by the pouring shape,
+                        // instead of being squeezed and stretched while the island grows.
+                        IslandContentView(state: state)
+                            .frame(width: contentWidth, height: contentHeight - earOffset)
+                            .offset(y: earOffset)
+                            .clipShape(IslandShape(width: islandWidth, height: islandHeight,
+                                                  cornerRadius: cornerRadius, topRadius: islandTopRadius, wave: islandWave))
+                            // Slides down from the notch as the wave pours, fades quickly when folding
+                            .transition(.asymmetric(
+                                insertion: .offset(y: -10).combined(with: .opacity)
+                                    .animation(.spring(response: 0.48, dampingFraction: 0.9).delay(0.12)),
+                                removal: .opacity.animation(.easeIn(duration: 0.12))))
                     }
-                    .transition(.opacity)
-                } else {
-                    IslandContentView(state: state)
-                        .frame(width: islandWidth, height: islandHeight - earOffset)
-                        .offset(y: earOffset)
-                        .clipShape(IslandShape(width: islandWidth, height: islandHeight,
-                                              cornerRadius: cornerRadius, topRadius: islandTopRadius, wave: islandWave))
-                        // Slides down from the notch as the wave pours, fades quickly when folding
-                        .transition(.asymmetric(
-                            insertion: .offset(y: -16).combined(with: .opacity)
-                                .animation(.spring(response: 0.5, dampingFraction: 0.85).delay(0.1)),
-                            removal: .opacity.animation(.easeIn(duration: 0.12))))
                 }
             }
+            .frame(width: islandWidth, height: islandHeight, alignment: .top)
+            .clipShape(IslandShape(width: islandWidth, height: islandHeight, cornerRadius: cornerRadius,
+                                   topRadius: islandTopRadius, wave: islandWave))
 
             // Single BotPlacement — always alive in the view tree so spring animations
             // fire from the current position (e.g. choose at 60,101) when canvas deactivates.
@@ -110,8 +119,13 @@ struct IslandContainer: View {
                 // Keep idle animations inside the resting strip. Expanded views
                 // retain the panel's full height for particles and hands.
                 .mask(alignment: .topLeading) {
-                    Rectangle().frame(width: islandWidth,
-                                      height: state.mode == .expanded ? 320 : islandHeight)
+                    if state.mode == .expanded {
+                        IslandShape(width: islandWidth, height: islandHeight, cornerRadius: cornerRadius,
+                                    topRadius: islandTopRadius, wave: islandWave)
+                            .frame(width: islandWidth, height: islandHeight)
+                    } else {
+                        Rectangle().frame(width: islandWidth, height: islandHeight)
+                    }
                 }
                 .opacity(uploadActive || greetingActive ? 0 : 1)
                 .animation(.easeInOut(duration: 0.25), value: uploadActive || greetingActive)
@@ -139,30 +153,30 @@ struct IslandContainer: View {
             let tr: CGFloat = 0
             let targetH = (newMode == .expanded && state.view == .prompt) ? chatPromptHeight : h
             if newMode == .expanded {
+                contentWidth = w
+                contentHeight = targetH
                 // Pour out: the bottom edge starts as a wave (middle leading), width opens fast,
                 // the height drops, then the wave ripples once and settles flat.
-                islandWave = targetH * 0.32
-                withAnimation(pourWidth) {
-                    islandWidth  = w
-                    islandFlare  = IslandConst.flare(for: newMode)
+                islandWave = targetH * 0.22
+                withAnimation(openSpring) {
+                    islandWidth     = w
+                    islandHeight    = targetH
+                    cornerRadius    = cr
                     islandTopRadius = tr
-                }
-                withAnimation(pourHeight) {
-                    islandHeight = targetH
-                    cornerRadius = cr
+                    islandFlare     = IslandConst.flare(for: newMode)
                 }
                 withAnimation(pourWave) { islandWave = 0 }
             } else if oldMode == .expanded {
                 // Retract: the sides rise first, the middle follows, then everything slips back in.
-                withAnimation(.easeOut(duration: 0.14)) { islandWave = islandHeight * 0.22 }
-                withAnimation(retract.delay(0.04)) {
+                withAnimation(.easeOut(duration: 0.12)) { islandWave = islandHeight * 0.16 }
+                withAnimation(closeEase) {
                     islandWidth      = w
                     islandHeight     = targetH
                     cornerRadius     = cr
                     islandTopRadius  = tr
                     islandFlare      = IslandConst.flare(for: newMode)
                 }
-                withAnimation(retract.delay(0.12)) { islandWave = 0 }
+                withAnimation(closeEase.delay(0.1)) { islandWave = 0 }
             } else {
                 withAnimation(anim) {
                     islandWidth      = w
@@ -183,6 +197,8 @@ struct IslandContainer: View {
             let (w, h) = islandSize(mode: .expanded, view: newView,
                                     progress: state.uploadProgress,
                                     nw: state.notchWidth, nh: state.notchHeight)
+            contentWidth = w
+            contentHeight = newView == .prompt ? chatPromptHeight : h
             withAnimation(openSpring) {
                 islandWidth  = w
                 islandHeight = newView == .prompt ? chatPromptHeight : h
@@ -190,6 +206,7 @@ struct IslandContainer: View {
         }
         .onChange(of: state.chatHistory.count) { _, _ in
             guard state.mode == .expanded, state.view == .prompt else { return }
+            contentHeight = chatPromptHeight
             withAnimation(openSpring) { islandHeight = chatPromptHeight }
         }
         .onAppear {
@@ -201,6 +218,7 @@ struct IslandContainer: View {
             cornerRadius     = state.mode == .expanded ? IslandConst.expandedCorner : IslandConst.roundedCorner
             islandTopRadius  = 0
             islandFlare      = IslandConst.flare(for: state.mode)
+            if state.mode == .expanded { contentWidth = w; contentHeight = islandHeight }
         }
         .onReceive(NotificationCenter.default.publisher(for: .botGreet)) { _ in
             greetNotif.toggle()

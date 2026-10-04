@@ -1596,14 +1596,14 @@ struct IntegrationCardView: View {
                 }
                 return "Key configured · \(model)"
             }
-            return "Connected · loading…"
+            return "Connecté · chargement…"
         } else {
             if isHooks { return "Hooks not installed" }
             if isAI {
                 let provider = ChatProvider(pillID: task.id)!
-                return provider.isLocal ? "Not connected" : "Key not configured"
+                return provider.isLocal ? "Non connecté" : "Clé à ajouter dans les Réglages"
             }
-            return "Key not configured"
+            return "Clé à ajouter dans les Réglages"
         }
     }
 

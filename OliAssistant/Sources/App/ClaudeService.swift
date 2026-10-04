@@ -192,6 +192,7 @@ final class ClaudeService {
     private var conversationMessages: [[String: Any]] = []
 
     func clearConversation() {
+        claudeCodeSession = nil
         conversationMessages = []
     }
 
@@ -302,7 +303,8 @@ final class ClaudeService {
             return
         }
         guard let key = apiKey, !key.isEmpty else {
-            await showError("API key missing. Open settings.", state: state)
+            // Oculot: no API key → Oli uses the user's own Claude Code (their subscription).
+            await chatWithClaudeCode(query: query, state: state)
             return
         }
 
@@ -705,6 +707,60 @@ final class ClaudeService {
         state.stateOverride = nil
         state.view = .result
         NotificationCenter.default.post(name: .triggerEmote, object: BotEmote.proud)
+    }
+
+    // MARK: - Chat through the user's Claude Code (no API key needed)
+
+    /// Session of Claude Code used by the chat, kept so the conversation has a memory.
+    private var claudeCodeSession: String? = nil
+
+    /// Path of the `claude` command, if Claude Code is installed.
+    nonisolated static var claudeCodePath: String? {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        return [home + "/.local/bin/claude", home + "/.claude/local/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
+            .first { FileManager.default.isExecutableFile(atPath: $0) }
+    }
+
+    private func chatWithClaudeCode(query: String, state: AppState) async {
+        guard let claude = Self.claudeCodePath else {
+            await showError("Claude n’est pas connecté. Ouvre Réglages → Agents → Connecter Claude.", state: state)
+            return
+        }
+        state.stateOverride = .thinking
+        var args = ["-p", query, "--output-format", "json", "--append-system-prompt", systemPrompt]
+        if let s = claudeCodeSession { args += ["--resume", s] }
+        let result = await Task.detached(priority: .userInitiated) { () -> (String?, String?, String?) in
+            let proc = Process()
+            proc.executableURL = URL(fileURLWithPath: claude)
+            proc.arguments = args
+            proc.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+            var env = ProcessInfo.processInfo.environment
+            env["TERM_PROGRAM"] = ""          // keep this background session off the Claude Code pill
+            let home = FileManager.default.homeDirectoryForCurrentUser.path
+            env["PATH"] = [home + "/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", env["PATH"] ?? ""].joined(separator: ":")
+            proc.environment = env
+            let out = Pipe(), err = Pipe()
+            proc.standardOutput = out; proc.standardError = err
+            do { try proc.run() } catch { return (nil, nil, error.localizedDescription) }
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            let errText = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+            proc.waitUntilExit()
+            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return (nil, nil, errText.isEmpty ? "Réponse illisible de Claude." : errText)
+            }
+            let text = json["result"] as? String
+            let isError = (json["is_error"] as? Bool) == true
+            return (isError ? nil : text, json["session_id"] as? String, isError ? (text ?? "Erreur de Claude.") : nil)
+        }.value
+        state.stateOverride = nil
+        if let session = result.1 { claudeCodeSession = session }
+        if let text = result.0, !text.isEmpty {
+            state.chatHistory.append(ChatMessage(role: .assistant, content: text.trimmingCharacters(in: .whitespacesAndNewlines)))
+            state.view = .prompt
+            NotificationCenter.default.post(name: .triggerEmote, object: BotEmote.happy)
+        } else {
+            await showError(result.2 ?? "Claude n’a pas répondu.", state: state)
+        }
     }
 
     private func showError(_ message: String, state: AppState) async {

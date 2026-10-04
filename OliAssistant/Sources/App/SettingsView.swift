@@ -66,6 +66,7 @@ struct SettingsView: View {
     @State private var espaceToken: String  = KeychainStore.shared.get("espace-token")    ?? ""
     @State private var espaceUrl: String    = KeychainStore.shared.get("espace-url")      ?? ""
     @State private var sitesManual: String  = AppState.shared.sitesManual
+    @State private var claudeConnected: Bool = HookServer.claudeHooksInstalled()
     @State private var agendaIcsUrl: String = KeychainStore.shared.get("agenda-ics-url")  ?? ""
     @State private var pagespeedKey: String = KeychainStore.shared.get("pagespeed-api-key") ?? ""
     @State private var instagramToken: String = KeychainStore.shared.get("instagram-token") ?? ""
@@ -363,6 +364,41 @@ struct SettingsView: View {
     // MARK: - Agents section
 
     @ViewBuilder private var agentsSection: some View {
+        // Oculot: one button to connect Claude (session tracking + chat on the user's own Claude Code)
+        GroupBox {
+            HStack(alignment: .center, spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(Color(hex: "#E07950"))
+                    .frame(width: 34)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text("Claude").font(.system(size: 13, weight: .semibold))
+                        Text(claudeConnected ? "connecté" : "non connecté")
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundColor(claudeConnected ? .green : .secondary)
+                    }
+                    Text(claudeConnected
+                         ? "Oli suit tes sessions Claude Code, tu réponds aux autorisations depuis l’encoche, et le chat utilise ton Claude."
+                         : ClaudeService.claudeCodePath == nil
+                            ? "Installe d’abord Claude Code sur ce Mac, puis reviens ici."
+                            : "Un clic : Oli suit tes sessions et le chat utilise ton Claude, sans clé API ni réglage.")
+                        .font(.system(size: 11)).foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if claudeConnected {
+                    Button("Déconnecter") { disconnectClaude() }.buttonStyle(.bordered)
+                } else {
+                    Button("Connecter Claude") { connectClaude() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(ClaudeService.claudeCodePath == nil)
+                }
+            }
+            .padding(4)
+        }
+
+        DisclosureGroup("Options avancées") {
         GroupBox("Claude Code Hooks") {
             VStack(alignment: .leading, spacing: 10) {
                 if hookNeedsUpdate {
@@ -422,6 +458,7 @@ struct SettingsView: View {
                 #endif
             }
             .padding(6)
+        }
         }
 
         #if !APPSTORE
@@ -985,6 +1022,46 @@ struct SettingsView: View {
             statusMessage = "✓ Connected · \(models.count) model\(models.count == 1 ? "" : "s")"
         case .failure:
             statusMessage = "Couldn't reach \(name) at \(normalised). Is it running?"
+        }
+    }
+
+    /// One click, one confirmation: hooks in ~/.claude/settings.json (dated backup kept) and the chat on Claude Code.
+    private func connectClaude() {
+        let alert = NSAlert()
+        alert.messageText = "Connecter Claude à Oli ?"
+        alert.informativeText = """
+        Oli va ajouter son relais aux réglages de Claude Code (~/.claude/settings.json) pour suivre tes sessions \
+        et te laisser accepter ou refuser les autorisations depuis l’encoche. Une copie de l’ancien fichier est gardée à côté.
+
+        Le chat d’Oli utilisera ton Claude Code, avec ton abonnement : aucune clé API à saisir.
+        """
+        alert.addButton(withTitle: "Connecter")
+        alert.addButton(withTitle: "Annuler")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            _ = try HookServer.shared.previewClaudeHooks()
+            try HookServer.shared.writeClaudeHooks()
+            hookNeedsUpdate = false
+            claudeConnected = HookServer.claudeHooksInstalled()
+            statusMessage = claudeConnected ? "✓ Claude est connecté." : "Les hooks n’ont pas pu être vérifiés."
+        } catch {
+            statusMessage = "❌ \(error.localizedDescription)"
+        }
+    }
+
+    private func disconnectClaude() {
+        let alert = NSAlert()
+        alert.messageText = "Déconnecter Claude ?"
+        alert.informativeText = "Oli retire son relais des réglages de Claude Code. Tes autres hooks ne sont pas touchés."
+        alert.addButton(withTitle: "Déconnecter")
+        alert.addButton(withTitle: "Annuler")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        do {
+            try HookServer.shared.uninstallClaudeHooks()
+            claudeConnected = HookServer.claudeHooksInstalled()
+            statusMessage = "✓ Claude est déconnecté."
+        } catch {
+            statusMessage = "❌ \(error.localizedDescription)"
         }
     }
 
