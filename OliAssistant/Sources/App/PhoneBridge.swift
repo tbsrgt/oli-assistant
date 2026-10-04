@@ -45,10 +45,14 @@ final class PhoneBridge: @unchecked Sendable {
             params.allowLocalEndpointReuse = true
             let l = (try? NWListener(using: params, on: NWEndpoint.Port(rawValue: Self.preferredPort)!))
                 ?? (try? NWListener(using: params))
-            guard let l else { return }
+            guard let l else { appendAppLog("oli.log", "Pont téléphone : impossible de créer l’écoute"); return }
             l.newConnectionHandler = { [weak self] c in self?.accept(c) }
             l.stateUpdateHandler = { [weak self] state in
-                if case .ready = state { self?.port = l.port?.rawValue ?? 0 }
+                switch state {
+                case .ready: self?.port = l.port?.rawValue ?? 0; appendAppLog("oli.log", "Pont téléphone prêt sur le port \(l.port?.rawValue ?? 0)")
+                case .failed(let e): appendAppLog("oli.log", "Pont téléphone en échec : \(e)")
+                default: break
+                }
             }
             l.start(queue: queue)
             listener = l
