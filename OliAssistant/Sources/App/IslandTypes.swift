@@ -10,7 +10,7 @@ enum IslandMode: String, CaseIterable {
 
 enum IslandView: String, CaseIterable {
     case overview, empty, approval, question, error, finished
-    case confused, upload, uploading, choose, prompt
+    case confused, upload, uploading, choose, mail, prompt
     case searching, result, note, settings, greeting, wardrobe
     case terminal   // Oculot: real shell in the notch
 }
@@ -192,6 +192,7 @@ enum IslandConst {
         .upload:    ViewLayout(height: 176, botX: 140, botY: 104, botDiameter: 62, agentMode: .column),
         .uploading: ViewLayout(height: 176, botX: 46,  botY: 118, botDiameter: 20, agentMode: .none),
         .choose:    ViewLayout(height: 176, botX: 60,  botY: 101, botDiameter: 52, agentMode: .column),
+        .mail:      ViewLayout(height: 260, botX: 56,  botY: nil, botDiameter: 46, agentMode: .column),
         .prompt:    ViewLayout(height: 160, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),
         .terminal:  ViewLayout(height: 340, botX: 32,  botY: 58,  botDiameter: 34, agentMode: .none),
         .searching: ViewLayout(height: 160, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),

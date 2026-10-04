@@ -66,6 +66,20 @@ struct UploadCanvasView: View {
             .frame(width: 168, height: 26)
             .position(x: 114 + 84, y: 113 + 13)   // center = (198, 126)
 
+            // Secondary: send it by mail (opens a new message in Mail, the user sends it)
+            Button {
+                withAnimation(.easeInOut(duration: 0.22)) { state.view = .mail }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                    UploadSequenceEngine.shared.deactivate()
+                }
+            } label: {
+                Color.clear
+                    .frame(width: 140, height: 26)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .frame(width: 140, height: 26)
+            .position(x: 290 + 70, y: 113 + 13)   // center = (360, 126)
         }
         .opacity(f.chooseAlpha)
         .allowsHitTesting(f.chooseAlpha > 0.5)
@@ -266,6 +280,14 @@ struct UploadCanvasView: View {
             .font(.system(size:12.5, weight:.medium))
             .foregroundColor(Color(red:0.043,green:0.047,blue:0.055))
         cCtx.draw(btn1, at: CGPoint(x:198, y:126), anchor: .center)
+
+        // Secondary button (dim fill)
+        cCtx.fill(roundedRect(CGRect(x:290,y:113,width:140,height:26), r:13),
+                  with: .color(Color.white.opacity(0.09)))
+        let btn2 = Text("Envoyer par mail")
+            .font(.system(size:12.5, weight:.medium))
+            .foregroundColor(Color(hex:"#F1F2F4"))
+        cCtx.draw(btn2, at: CGPoint(x:360, y:126), anchor: .center)
 
     }
 

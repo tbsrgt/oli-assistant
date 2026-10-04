@@ -67,6 +67,13 @@ struct SettingsView: View {
     @State private var espaceUrl: String    = KeychainStore.shared.get("espace-url")      ?? ""
     @State private var sitesManual: String  = AppState.shared.sitesManual
     @State private var claudeConnected: Bool = HookServer.claudeHooksInstalled()
+    @State private var mailAddress: String = KeychainStore.shared.get("mail-address") ?? ""
+    @State private var mailName: String = KeychainStore.shared.get("mail-name") ?? ""
+    @State private var mailPassword: String = KeychainStore.shared.get("mail-password") ?? ""
+    @State private var mailHost: String = KeychainStore.shared.get("mail-host") ?? ""
+    @State private var mailPort: String = KeychainStore.shared.get("mail-port") ?? ""
+    @State private var mailTest: String? = nil
+    @State private var mailTesting = false
     @State private var claudeModel: ClaudeService.ClaudeCodeModel = ClaudeService.claudeCodeModel
     @State private var agendaIcsUrl: String = KeychainStore.shared.get("agenda-ics-url")  ?? ""
     @State private var pagespeedKey: String = KeychainStore.shared.get("pagespeed-api-key") ?? ""
@@ -899,6 +906,41 @@ struct SettingsView: View {
                     }
                 }
 
+                // Email : envoyer directement depuis Oli (fichiers déposés sur l'encoche)
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color(hex: "#FF8A52")).frame(width: 8, height: 8)
+                        Text("Email").font(.system(size: 12, weight: .semibold))
+                        Text(KeychainStore.shared.get("mail-password") != nil ? "connecté" : "pour envoyer les fichiers déposés")
+                            .font(.system(size: 11)).foregroundColor(.secondary)
+                    }
+                    TextField("Ton adresse  (bonjour@oculot.studio, prenom@gmail.com…)", text: $mailAddress)
+                        .textFieldStyle(.roundedBorder)
+                        .onChange(of: mailAddress) { _, a in
+                            if mailHost.isEmpty || mailHost == EmailSender.preset(for: "").host {
+                                let p = EmailSender.preset(for: a); mailHost = p.host; mailPort = String(p.port)
+                            }
+                        }
+                    SecureField("Mot de passe  (mot de passe d’application pour Gmail / iCloud)", text: $mailPassword)
+                        .textFieldStyle(.roundedBorder)
+                    TextField("Nom affiché  (Tobias · Oculot)", text: $mailName)
+                        .textFieldStyle(.roundedBorder)
+                    DisclosureGroup("Serveur d’envoi") {
+                        HStack {
+                            TextField("Serveur SMTP", text: $mailHost).textFieldStyle(.roundedBorder)
+                            TextField("Port", text: $mailPort).textFieldStyle(.roundedBorder).frame(width: 70)
+                        }
+                        Text("Trouvé tout seul pour Gmail, iCloud, Outlook, Orange, Free et OVH (oculot.studio).")
+                            .font(.system(size: 10.5)).foregroundColor(.secondary)
+                    }
+                    .font(.system(size: 11))
+                    HStack(spacing: 8) {
+                        Button(mailTesting ? "Test…" : "Tester la connexion") { testMail() }
+                            .disabled(mailTesting || mailAddress.isEmpty || mailPassword.isEmpty)
+                        if let t = mailTest { Text(t).font(.system(size: 11)).foregroundColor(t.hasPrefix("✓") ? .green : .red) }
+                    }
+                }
+
                 // Vercel
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
@@ -1080,6 +1122,26 @@ struct SettingsView: View {
         }
     }
 
+    private func saveMailKeys() {
+        saveKey("mail-address", value: mailAddress.trimmingCharacters(in: .whitespaces))
+        saveKey("mail-name", value: mailName.trimmingCharacters(in: .whitespaces))
+        saveKey("mail-password", value: mailPassword)
+        saveKey("mail-host", value: mailHost.trimmingCharacters(in: .whitespaces))
+        saveKey("mail-port", value: mailPort.trimmingCharacters(in: .whitespaces))
+    }
+
+    /// Saves, then logs in to the mail server without sending anything.
+    private func testMail() {
+        saveMailKeys()
+        guard let account = EmailSender.account else { mailTest = "Adresse ou mot de passe manquant."; return }
+        mailTesting = true; mailTest = nil
+        Task {
+            do { try await EmailSender.test(account); mailTest = "✓ Connexion réussie, Oli peut envoyer." }
+            catch { mailTest = error.localizedDescription }
+            mailTesting = false
+        }
+    }
+
     private func installHooks() {
         do {
             pendingHookJSON = try HookServer.shared.previewClaudeHooks()
@@ -1251,6 +1313,7 @@ struct SettingsView: View {
             AppState.shared.agendaLastStatus = 0
         }
         AgendaPoller.shared.pollNow()
+        saveMailKeys()
         saveKey("pagespeed-api-key", value: pagespeedKey)
         saveKey("instagram-token", value: instagramToken.trimmingCharacters(in: .whitespacesAndNewlines))
         saveKey("instagram-user-id", value: instagramUserId.trimmingCharacters(in: .whitespacesAndNewlines))

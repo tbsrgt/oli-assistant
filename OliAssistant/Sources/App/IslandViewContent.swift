@@ -18,6 +18,7 @@ struct IslandViewContent: View {
         case .upload:    UploadView(state: state)
         case .uploading: UploadingView(state: state)
         case .choose:    ChooseView(state: state)
+        case .mail:      MailComposeView(state: state)
         case .prompt:    PromptView(state: state)
         case .terminal:  TerminalPanelView(state: state)
         case .searching: SearchingView(state: state)
@@ -935,6 +936,7 @@ struct ChooseView: View {
                 Text("Qu’est-ce que j’en fais ?").font(.system(size: 12.5)).foregroundColor(Color(hex: "#9398A1"))
                 HStack(spacing: 8) {
                     PrimaryButton("Poser une question") { state.view = .prompt }
+                    SecondaryButton("Envoyer par mail") { state.view = .mail }
                 }
             }
             .padding(.leading, 98)

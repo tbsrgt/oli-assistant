@@ -69,6 +69,7 @@ final class KeychainStore: @unchecked Sendable {
         "github-token",
         // Oculot
         "espace-token", "espace-url",
+        "mail-address", "mail-name", "mail-password", "mail-host", "mail-port",
         "agenda-ics-url", "pagespeed-api-key", "instagram-token", "instagram-user-id",
     ]
 
