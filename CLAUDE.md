@@ -15,7 +15,9 @@ agenda, Instagram), avec un terminal intégré.
 - `OliAssistant/Widget/` — widget WidgetKit (lit l’instantané `Sources/Shared/OliWidgetSnapshot.swift` écrit par `WidgetSnapshotWriter.swift`).
 - `android/` — app Android d’Oli (Kotlin + Compose) : Aujourd’hui, verrou biométrique, Connexions (espace,
   agenda Oculot, sites, Claude via jumelage QR avec le Mac `oli://pair` → `/v1/status`, `/v1/chat`),
-  automatisations (briefing 8 h 30, rappels, pannes, échéances), partage, widget Glance. Clair http autorisé
+  automatisations (briefing 8 h 30, rappels, pannes, échéances), partage, widget Glance, accueil bento, Oli flottant
+  (`overlay/OverlayService.kt`), Claude Code (`/v1/claude/sessions`, `/v1/claude/approvals/<id>`), santé du téléphone
+  (audit, nettoyage, rangement), défis/badges (DataStore), splash animé. Clair http autorisé
   globalement (Android ne filtre pas par IP) mais l’app ne parle en clair qu’à une IP locale (`MacLink.isLocalHost`). `JAVA_HOME=~/.local/jdk-17/Contents/Home ./gradlew assembleDebug testDebugUnitTest`
   (SDK dans `~/Library/Android/sdk`, chemin dans `android/local.properties`, non versionné).
 - `docs/PLAN.md` — plan par phases. `tools/sounds-gen.py` — génère les sons.

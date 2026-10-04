@@ -29,6 +29,7 @@ import java.util.Locale
 object Alarms {
     const val ACTION_BRIEFING = "studio.oculot.oli.BRIEFING"
     const val ACTION_REMINDER = "studio.oculot.oli.RAPPEL"
+    const val ACTION_EVENING = "studio.oculot.oli.SOIR"
     private const val BRIEFING_CODE = 830
 
     private fun manager(context: Context) = context.getSystemService(AlarmManager::class.java)
@@ -63,6 +64,15 @@ object Alarms {
             manager(context)?.cancel(pi); return
         }
         val next = Automations.nextBriefing(ZonedDateTime.now())
+        setAt(context, next.toInstant().toEpochMilli(), pi, windowBefore = false)
+    }
+
+    /** Rappel « mode avion du soir » à 22 h (Android interdit aux apps d'activer le mode avion). */
+    fun scheduleEvening(context: Context) {
+        val pi = PendingIntent.getBroadcast(context, 2200, Intent(context, AlarmReceiver::class.java).setAction(ACTION_EVENING),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        if (!AutomationPrefs(context).isOn(AutomationPrefs.Key.EVENING)) { manager(context)?.cancel(pi); return }
+        val next = Automations.nextBriefing(ZonedDateTime.now(), java.time.LocalTime.of(22, 0))
         setAt(context, next.toInstant().toEpochMilli(), pi, windowBefore = false)
     }
 
@@ -109,6 +119,10 @@ class AlarmReceiver : BroadcastReceiver() {
                     address = intent.getStringExtra("adresse"),
                 )
             }
+            Alarms.ACTION_EVENING -> {
+                if (AutomationPrefs(context).isOn(AutomationPrefs.Key.EVENING)) { Notifier.createChannels(context); Notifier.evening(context) }
+                Alarms.scheduleEvening(context)
+            }
             Alarms.ACTION_BRIEFING -> {
                 WorkManager.getInstance(context).enqueueUniqueWork(
                     "oli-briefing", ExistingWorkPolicy.REPLACE,
@@ -122,6 +136,8 @@ class AlarmReceiver : BroadcastReceiver() {
             Intent.ACTION_TIMEZONE_CHANGED, Intent.ACTION_TIME_CHANGED -> {
                 Alarms.scheduleBriefing(context)
                 SiteWatchWorker.schedule(context)
+                Alarms.scheduleEvening(context)
+                if (AutomationPrefs(context).isOn(AutomationPrefs.Key.FLOATING)) studio.oculot.oli.overlay.OverlayService.start(context)
             }
         }
     }

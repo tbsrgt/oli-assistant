@@ -6,4 +6,12 @@
         <item name="android:navigationBarColor">@color/oli_bg</item>
         <item name="android:colorAccent">@color/oli_tomato</item>
     </style>
+
+    <!-- Écran de lancement : Oli descend comme une vague puis cligne des yeux (animé à partir d'Android 12). -->
+    <style name="Theme.Oli.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/oli_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/oli_splash</item>
+        <item name="windowSplashScreenAnimationDuration">850</item>
+        <item name="postSplashScreenTheme">@style/Theme.Oli</item>
+    </style>
 </resources>

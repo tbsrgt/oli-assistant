@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/oli_splash_vector">
+    <target android:name="corps" android:animation="@animator/oli_descente" />
+    <target android:name="yeux" android:animation="@animator/oli_clin" />
+</animated-vector>

@@ -23,6 +23,7 @@ class SiteWatchWorker(context: Context, params: WorkerParameters) : CoroutineWor
         val agenda = runCatching { repo.loadAgenda() }.getOrNull()
         val run = repo.checkSites()
         Automator.afterRefresh(applicationContext, espace, agenda, run)
+        if (Repository(applicationContext).settings().mac != null) runCatching { Automator.claudeCheck(applicationContext) }
         return Result.success()
     }
 
