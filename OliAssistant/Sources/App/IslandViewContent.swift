@@ -1005,7 +1005,7 @@ struct PromptView: View {
                         HStack(spacing: 5) {
                             Image(systemName: "sparkles").font(.system(size: 9, weight: .semibold))
                                 .foregroundColor(Color(hex: "#E07950"))
-                            Text("Ton Claude").font(.system(size: 10.5, weight: .medium))
+                            Text("Ton Claude · \(ClaudeService.claudeCodeModel.label)").font(.system(size: 10.5, weight: .medium))
                                 .foregroundColor(Color(hex: "#9398A1"))
                         }
                         .padding(.horizontal, 8).padding(.vertical, 4)

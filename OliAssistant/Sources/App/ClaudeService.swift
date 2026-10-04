@@ -715,6 +715,26 @@ final class ClaudeService {
 
     // MARK: - Chat through the user's Claude Code (no API key needed)
 
+    /// Claude model the chat asks Claude Code for (Settings → Agents), Sonnet by default.
+    enum ClaudeCodeModel: String, CaseIterable, Identifiable {
+        case sonnet, opus, haiku
+        var id: String { rawValue }
+        var label: String {
+            switch self { case .sonnet: return "Sonnet"; case .opus: return "Opus"; case .haiku: return "Haiku" }
+        }
+        var hint: String {
+            switch self {
+            case .sonnet: return "équilibré, par défaut"
+            case .opus: return "le plus fort, plus lent"
+            case .haiku: return "le plus rapide"
+            }
+        }
+    }
+    nonisolated static var claudeCodeModel: ClaudeCodeModel {
+        get { UserDefaults.standard.string(forKey: "claudeCodeModel").flatMap(ClaudeCodeModel.init) ?? .sonnet }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: "claudeCodeModel") }
+    }
+
     /// The chat talks to the user's Claude Code: Claude is connected in Settings, or there is no API key.
     var usesClaudeCode: Bool {
         guard Self.claudeCodePath != nil else { return false }
@@ -737,7 +757,8 @@ final class ClaudeService {
             return
         }
         state.stateOverride = .thinking
-        var args = ["-p", query, "--output-format", "json", "--append-system-prompt", systemPrompt]
+        var args = ["-p", query, "--output-format", "json", "--append-system-prompt", systemPrompt,
+                    "--model", Self.claudeCodeModel.rawValue]
         if let s = claudeCodeSession { args += ["--resume", s] }
         let result = await Task.detached(priority: .userInitiated) { () -> (String?, String?, String?) in
             let proc = Process()

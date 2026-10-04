@@ -67,6 +67,7 @@ struct SettingsView: View {
     @State private var espaceUrl: String    = KeychainStore.shared.get("espace-url")      ?? ""
     @State private var sitesManual: String  = AppState.shared.sitesManual
     @State private var claudeConnected: Bool = HookServer.claudeHooksInstalled()
+    @State private var claudeModel: ClaudeService.ClaudeCodeModel = ClaudeService.claudeCodeModel
     @State private var agendaIcsUrl: String = KeychainStore.shared.get("agenda-ics-url")  ?? ""
     @State private var pagespeedKey: String = KeychainStore.shared.get("pagespeed-api-key") ?? ""
     @State private var instagramToken: String = KeychainStore.shared.get("instagram-token") ?? ""
@@ -396,6 +397,20 @@ struct SettingsView: View {
                 }
             }
             .padding(4)
+            Divider().padding(.vertical, 2)
+            HStack(spacing: 10) {
+                Text("Modèle du chat").font(.system(size: 12, weight: .medium))
+                Picker("", selection: $claudeModel) {
+                    ForEach(ClaudeService.ClaudeCodeModel.allCases) { m in
+                        Text("\(m.label) — \(m.hint)").tag(m)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 260)
+                .onChange(of: claudeModel) { _, m in ClaudeService.claudeCodeModel = m }
+                Spacer()
+            }
+            .padding(.horizontal, 4).padding(.bottom, 4)
         }
 
         DisclosureGroup("Options avancées") {
