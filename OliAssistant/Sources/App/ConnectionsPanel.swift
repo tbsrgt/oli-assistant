@@ -26,7 +26,7 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
     var why: String {
         switch self {
         case .email: return "Envoyer les fichiers déposés sur l’encoche"
-        case .espace: return "espace.oculot.studio : projets, étapes, échéances"
+        case .espace: return "Projets, échéances et suivi des sites clients"
         case .agenda: return "agenda.oculot.studio : rendez-vous, rappel 10 min avant"
         case .sites: return "Pannes, certificats, liens cassés"
         case .phone: return "Oli Android : Claude depuis ton téléphone, via ce Mac"
@@ -119,6 +119,7 @@ struct ConnectionsPanel: View {
                     .id("\(kind.rawValue)-\(version)")
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .oliConnectionsChanged)) { _ in version += 1 }
         .sheet(item: $open, onDismiss: { version += 1 }) { kind in
             ConnectSheet(kind: kind) { open = nil }
         }
@@ -144,6 +145,9 @@ private struct ConnectionRow: View {
             Spacer()
             if on {
                 Button("Gérer", action: action).buttonStyle(.bordered)
+            } else if kind == .espace {
+                // Un clic : l'admin de l'espace renvoie le jeton à Oli (oli://connect).
+                Button("Se connecter") { EspaceConnect.start() }.buttonStyle(.borderedProminent)
             } else {
                 Button("Se connecter", action: action).buttonStyle(.borderedProminent)
             }
@@ -222,8 +226,9 @@ private struct ConnectSheet: View {
             }
             .font(.system(size: 11.5))
         case .espace:
-            SecureField("Code d’équipe", text: $id).textFieldStyle(.roundedBorder)
+            Button { EspaceConnect.start(); close() } label: { Label("Se connecter avec l’espace Oculot", systemImage: "bolt.fill") }
             DisclosureGroup("Plus d’options", isExpanded: $showMore) {
+                SecureField("ou colle le code d’équipe", text: $id).textFieldStyle(.roundedBorder)
                 TextField("Adresse de l’espace (par défaut espace.oculot.studio)", text: $extra).textFieldStyle(.roundedBorder)
             }
             .font(.system(size: 11.5))

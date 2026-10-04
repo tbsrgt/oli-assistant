@@ -46,10 +46,23 @@ final class SitesPoller {
         #endif
     }
 
-    /// Current watch list (espace live sites + manual list).
+    /// Sites probed by this Mac: espace live sites NOT followed by the server, plus the manual list.
+    /// Sites under « suivi » are checked by espace.oculot.studio every 10 min, day and night.
     static var targets: [SiteTarget] {
         let app = AppState.shared
-        return SiteMonitor.targets(espace: app.espaceClients.map { ($0.name, $0.liveUrl) }, manual: app.sitesManual)
+        let server = Set(serverChecks.map(\.url))
+        return SiteMonitor.targets(espace: app.espaceClients.filter { $0.suivi == nil }.map { ($0.name, $0.liveUrl) }, manual: app.sitesManual)
+            .filter { !server.contains($0.url) }
+    }
+
+    /// Sites followed by the server, as checks (same list, same alerts as local probes).
+    static var serverChecks: [SiteCheck] {
+        AppState.shared.espaceClients.compactMap { c in
+            guard let su = c.suivi else { return nil }
+            return SiteCheck(name: c.name, url: SiteMonitor.normalize(su.url), status: su.status, httpCode: su.httpCode,
+                             latencyMs: su.latencyMs, tlsExpiresAt: su.tlsExpiresAt, lastCheckedAt: su.checkedAt,
+                             lastError: su.status == .down ? su.reason : nil, consecutiveFailures: su.status == .down ? 2 : 0)
+        }
     }
 
     /// Runs a pass right away (Settings saved, « Revérifier » button, timer).
@@ -57,16 +70,31 @@ final class SitesPoller {
         guard !running else { return }
         let targets = Self.targets
         let app = AppState.shared
-        guard !targets.isEmpty else {
+        let server = Self.serverChecks
+        guard !targets.isEmpty || !server.isEmpty else {
             app.siteChecks = []
             return
         }
         running = true
         let previous = Dictionary(uniqueKeysWithValues: app.siteChecks.map { ($0.id, $0) })
         Task { [weak self] in
-            let checks = await SiteMonitor.runPass(targets: targets, previous: previous)
-            self?.handle(checks, previous: previous)
+            let local = await SiteMonitor.runPass(targets: targets, previous: previous)
+            self?.handle(local + Self.serverChecks, previous: previous)
         }
+    }
+
+    /// New server state (espace poll, every 5 min): update the list and alert on changes, no probe.
+    func mergeServerSuivi() {
+        guard !running else { return }
+        let app = AppState.shared
+        let server = Self.serverChecks
+        let serverURLs = Set(server.map(\.url))
+        guard !server.isEmpty || app.siteChecks.contains(where: { serverURLs.contains($0.url) }) else { return }
+        let previous = Dictionary(uniqueKeysWithValues: app.siteChecks.map { ($0.id, $0) })
+        let localURLs = Set(Self.targets.map(\.url))
+        let local = app.siteChecks.filter { localURLs.contains($0.url) }
+        running = true
+        handle(local + server, previous: previous)
     }
 
     // MARK: - Alerts

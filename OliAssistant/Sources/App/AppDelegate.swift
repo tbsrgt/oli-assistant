@@ -24,10 +24,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - URL scheme oli://
 
     /// `oli://` (clic sur le widget, ou `open oli://`) : déplie l'encoche.
-    /// `oli://reglages` ouvre les réglages.
+    /// `oli://reglages` ouvre les réglages. `oli://connect?…` connecte un service en un clic (EspaceConnect).
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first(where: { $0.scheme?.lowercased() == "oli" }) else { return }
         if url.host?.lowercased() == "reglages" { openSettings(); return }
+        if url.host?.lowercased() == "connect" { EspaceConnect.handle(url); return }
         islandController?.openFromURL()
     }
 

@@ -40,6 +40,8 @@ struct EspaceClient: Identifiable {
     let adminUrl: String
     /// Labels of the steps completed in the last 7 days (Friday recap).
     var recentlyDone: [String] = []
+    /// Suivi du site fait par le serveur de l'espace (nil si le client n'est pas suivi).
+    var suivi: ServerSuivi? = nil
 
     var isDone: Bool { stepsTotal > 0 && stepsDone == stepsTotal }
     var urgency: EspaceUrgency {
@@ -65,6 +67,19 @@ struct EspaceClient: Identifiable {
         }
     }
     var stepLabel: String { currentStep?.label ?? (isDone ? "Terminé" : "Pas d’étape") }
+}
+
+/// État du site d'un client suivi, vérifié toutes les 10 min par le serveur (/api/suivi/run),
+/// même quand ce Mac dort. Oli s'en sert pour alerter sans sonder lui-même.
+struct ServerSuivi: Sendable, Equatable {
+    let url: String
+    let status: SiteStatus
+    let reason: String?
+    let httpCode: Int?
+    let latencyMs: Int?
+    let checkedAt: Date?
+    let tlsExpiresAt: Date?
+    let incidentSince: Date?
 }
 
 struct EspaceAlert: Identifiable {
@@ -167,7 +182,7 @@ final class EspacePoller: @unchecked Sendable {
                 daysLeft = Calendar.current.dateComponents([.day], from: today, to: Calendar.current.startOfDay(for: due)).day
             }
         }
-        return EspaceClient(
+        var client = EspaceClient(
             id: id, name: name,
             contact: d["contact"] as? String ?? "",
             kind: d["kind"] as? String ?? "",
@@ -185,6 +200,18 @@ final class EspacePoller: @unchecked Sendable {
             lastUpdate: updates.first,
             adminUrl: baseURL + "/admin/" + id,
             recentlyDone: recentlyDone)
+        if let su = d["suivi"] as? [String: Any], let url = su["url"] as? String {
+            client.suivi = ServerSuivi(
+                url: url,
+                status: SiteStatus(rawValue: su["status"] as? String ?? "") ?? .unknown,
+                reason: su["reason"] as? String,
+                httpCode: int(su["httpCode"]),
+                latencyMs: int(su["latencyMs"]),
+                checkedAt: date(su["checkedAt"]),
+                tlsExpiresAt: date(su["tlsExpiresAt"]),
+                incidentSince: date(su["incidentSince"]))
+        }
+        return client
     }
 
     // MARK: - Alerts
@@ -196,6 +223,7 @@ final class EspacePoller: @unchecked Sendable {
         let app = AppState.shared
         app.espaceClients = clients
         app.espaceLastSync = Date()
+        SitesPoller.shared.mergeServerSuivi()
 
         var alerts: [EspaceAlert] = []
         let firstRun = knownIds == nil
