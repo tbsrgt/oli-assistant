@@ -54,7 +54,11 @@ class Repository(private val context: Context) {
     suspend fun checkSites(): SiteRun = lock.withLock {
         withContext(Dispatchers.IO) {
             val s = settingsStore.load()
-            val targets = Sites.targets(s.sites, state.loadEspaceSites())
+            // Les sites sous suivi sont vérifiés par le serveur (même téléphone en veille) : on lit leur état,
+            // on ne sonde nous-mêmes que les autres.
+            val server = state.loadChecks(SERVER_CHECKS).values.toList()
+            val serverUrls = server.map { it.url }.toSet()
+            val targets = Sites.targets(s.sites, state.loadEspaceSites()).filter { it.url !in serverUrls }
             val previous = state.loadChecks()
             val offline = !isOnline()
             val gate = Semaphore(4)
@@ -64,7 +68,7 @@ class Repository(private val context: Context) {
                 }.awaitAll()
             }
             val now = System.currentTimeMillis()
-            val checks = results.map { (t, r) -> Sites.evaluate(previous[t.url], t, r, now) }
+            val checks = results.map { (t, r) -> Sites.evaluate(previous[t.url], t, r, now) } + server
             state.saveChecks(checks)
             val before = state.loadNotified()
             val recovered = Sites.recoveries(checks, before)
@@ -80,7 +84,8 @@ class Repository(private val context: Context) {
         try {
             val body = Net.getText(Espace.summaryUrl(s.espaceUrl), bearer = s.espaceToken, accept = "application/json")
             val projects = Espace.parseSummary(body)
-            state.saveEspaceSites(projects.filter { it.liveUrl.isNotBlank() }.map { it.name to it.liveUrl })
+            state.saveEspaceSites(projects.filter { it.liveUrl.isNotBlank() && it.suivi == null }.map { it.name to it.liveUrl })
+            state.saveChecks(projects.mapNotNull { it.suivi }, SERVER_CHECKS)
             Load.Ok(projects)
         } catch (e: Net.HttpError) {
             Load.Failed(if (e.code == 401 || e.code == 403) "Le code d’équipe n’est plus accepté : reconnecte l’espace client."
@@ -231,6 +236,9 @@ class Repository(private val context: Context) {
     }
 
     companion object {
+        /** État des sites sous suivi, lu dans l'espace client (vérifiés par le serveur). */
+        private const val SERVER_CHECKS = "server_checks"
+
         /** Évite que l'écran et la tâche de fond comptent deux fois le même échec. */
         private val lock = Mutex()
 

@@ -17,6 +17,8 @@ data class EspaceProject(
     val stepsDone: Int,
     val stepsTotal: Int,
     val liveUrl: String,
+    /** Suivi du site fait par le serveur de l'espace toutes les 10 min (null si le client n'est pas suivi). */
+    val suivi: SiteCheck? = null,
 ) {
     val isDone: Boolean get() = stepsTotal > 0 && stepsDone == stepsTotal
     val isLate: Boolean get() = !isDone && (daysLeft ?: 0) < 0
@@ -103,8 +105,33 @@ object Espace {
             stepsDone = done,
             stepsTotal = steps.length(),
             liveUrl = d.optString("liveUrl", ""),
+            suivi = d.optJSONObject("suivi")?.let { parseSuivi(name, it) },
         )
     }
+
+    /** Bloc « suivi » de la route : l'état vu par le serveur, sous la forme d'une vérification locale. */
+    fun parseSuivi(name: String, su: JSONObject): SiteCheck? {
+        val url = su.optStringOrNull("url") ?: return null
+        val status = when (su.optString("status")) {
+            "ok" -> SiteStatus.OK
+            "warning" -> SiteStatus.WARNING
+            "down" -> SiteStatus.DOWN
+            else -> SiteStatus.UNKNOWN
+        }
+        return SiteCheck(
+            name = name,
+            url = Sites.normalize(url),
+            status = status,
+            httpCode = if (su.isNull("httpCode")) null else su.optInt("httpCode"),
+            latencyMs = if (su.isNull("latencyMs")) null else su.optLong("latencyMs"),
+            tlsExpiresAtMs = su.optStringOrNull("tlsExpiresAt")?.let(::isoMs),
+            lastCheckedAtMs = su.optStringOrNull("checkedAt")?.let(::isoMs),
+            lastError = if (status == SiteStatus.DOWN) su.optStringOrNull("reason") else null,
+            consecutiveFailures = if (status == SiteStatus.DOWN) 2 else 0,
+        )
+    }
+
+    private fun isoMs(s: String): Long? = try { java.time.OffsetDateTime.parse(s).toInstant().toEpochMilli() } catch (_: Exception) { null }
 
     private fun JSONObject.optStringOrNull(key: String): String? =
         if (has(key) && !isNull(key)) optString(key).takeIf { it.isNotEmpty() } else null

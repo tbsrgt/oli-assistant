@@ -75,8 +75,8 @@ class SettingsStore(context: Context) {
 class SiteStateStore(context: Context) {
     private val prefs = context.getSharedPreferences("oli_etat_sites", Context.MODE_PRIVATE)
 
-    fun loadChecks(): Map<String, SiteCheck> {
-        val raw = prefs.getString("checks", null) ?: return emptyMap()
+    fun loadChecks(key: String = "checks"): Map<String, SiteCheck> {
+        val raw = prefs.getString(key, null) ?: return emptyMap()
         return try {
             val arr = JSONArray(raw)
             (0 until arr.length()).associate { i ->
@@ -99,7 +99,7 @@ class SiteStateStore(context: Context) {
         }
     }
 
-    fun saveChecks(checks: List<SiteCheck>) {
+    fun saveChecks(checks: List<SiteCheck>, key: String = "checks") {
         val arr = JSONArray()
         for (c in checks) {
             arr.put(JSONObject().apply {
@@ -112,7 +112,7 @@ class SiteStateStore(context: Context) {
                 put("fails", c.consecutiveFailures)
             })
         }
-        prefs.edit().putString("checks", arr.toString()).apply()
+        prefs.edit().putString(key, arr.toString()).apply()
     }
 
     fun loadNotified(): Set<String> = prefs.getStringSet("notified", emptySet())?.toSet() ?: emptySet()

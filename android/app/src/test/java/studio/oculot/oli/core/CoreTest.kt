@@ -91,6 +91,23 @@ class EspaceTest {
         assertEquals("Pas d’étape", p[2].stepLabel)
     }
 
+    @Test fun `suivi lu sur le serveur`() {
+        val su = org.json.JSONObject(
+            """{"url":"https://boulangerie.fr","status":"down","reason":"HTTP 503","httpCode":503,"latencyMs":812,
+               "checkedAt":"2026-10-05T08:10:00.000Z","tlsExpiresAt":"2026-12-27T10:00:00+00:00","incidentSince":"2026-10-05T08:00:00Z"}"""
+        )
+        val c = Espace.parseSuivi("Boulangerie", su)!!
+        assertEquals(SiteStatus.DOWN, c.status)
+        assertEquals("HTTP 503", c.reason())
+        assertEquals(2, c.consecutiveFailures)
+        assertEquals(1_791_187_800_000L, c.lastCheckedAtMs)
+        val ok = Espace.parseSuivi("B", org.json.JSONObject("""{"url":"b.fr","status":"ok","httpCode":null,"latencyMs":null}"""))!!
+        assertEquals(SiteStatus.OK, ok.status)
+        assertEquals("https://b.fr", ok.url)
+        assertNull(ok.httpCode)
+        assertNull(Espace.parseSuivi("C", org.json.JSONObject("""{"status":"ok"}""")))
+    }
+
     @Test fun `adresse de l'espace`() {
         assertEquals("https://espace.oculot.studio/api/espace/summary", Espace.summaryUrl(""))
         assertEquals("https://test.example/api/espace/summary", Espace.summaryUrl(" test.example/ "))
