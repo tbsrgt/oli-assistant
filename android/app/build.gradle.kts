@@ -49,6 +49,11 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.4")
+    implementation("androidx.glance:glance-appwidget:1.1.1")
+    // Lecture du QR code de jumelage avec le Mac (ZXing, sans Google Play Services).
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
     testImplementation("junit:junit:4.13.2")
     // org.json est fourni par Android sur l'appareil, mais pas dans les tests JVM.

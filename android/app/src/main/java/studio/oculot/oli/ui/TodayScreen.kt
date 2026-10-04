@@ -2,6 +2,7 @@ package studio.oculot.oli.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
@@ -52,7 +54,7 @@ data class TodayState(
 )
 
 @Composable
-fun TodayScreen(state: TodayState, onRefresh: () -> Unit, onSettings: () -> Unit) {
+fun TodayScreen(state: TodayState, onRefresh: () -> Unit, onSettings: () -> Unit, onChat: () -> Unit = {}, noLockWarning: Boolean = false) {
     val down = state.sites.count { it.status == SiteStatus.DOWN }
     val late = (state.espace as? Load.Ok)?.value?.count { it.isLate } ?: 0
 
@@ -73,7 +75,15 @@ fun TodayScreen(state: TodayState, onRefresh: () -> Unit, onSettings: () -> Unit
             } else {
                 IconButton(onClick = onRefresh) { Icon(Icons.Filled.Refresh, "Actualiser", tint = Oc.Text) }
             }
+            IconButton(onClick = onChat) { Icon(Icons.Filled.Face, "Demander à Oli", tint = Oc.Text) }
             IconButton(onClick = onSettings) { Icon(Icons.Filled.Settings, "Réglages", tint = Oc.Text) }
+        }
+
+        if (noLockWarning) {
+            Surface(color = Oc.Butter.copy(alpha = 0.12f), shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Text("Ton téléphone n’a pas de verrouillage. Active un code, un schéma ou l’empreinte dans les réglages Android pour protéger Oli.",
+                    color = Oc.Butter, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+            }
         }
 
         Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -92,6 +102,18 @@ fun TodayScreen(state: TodayState, onRefresh: () -> Unit, onSettings: () -> Unit
         Section("Sites") { SitesBlock(state, onSettings) }
         Section("Projets") { EspaceBlock(state.espace, onSettings) }
         Section("Agenda") { AgendaBlock(state.agenda, onSettings) }
+        Surface(
+            color = Oc.Card, shape = RoundedCornerShape(18.dp), border = BorderStroke(1.dp, Oc.CardBorder),
+            modifier = Modifier.fillMaxWidth().clickable(onClick = onChat),
+        ) {
+            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Demander à Oli", color = Oc.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Une question, un mail à rédiger ? Claude te répond via ton Mac.", color = Oc.Muted, fontSize = 13.sp)
+                }
+                Text("→", color = Oc.Tomato, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            }
+        }
         Spacer(Modifier.height(24.dp))
     }
 }
@@ -191,8 +213,8 @@ private fun SitesBlock(state: TodayState, onSettings: () -> Unit) {
 private fun EspaceBlock(load: Load<List<EspaceProject>>?, onSettings: () -> Unit) {
     when (load) {
         null -> Hint("Je regarde l’espace client…")
-        Load.NotConfigured -> Hint("Colle le jeton de l’espace client pour voir où en sont les projets.", "Ajouter le jeton", onSettings)
-        is Load.Failed -> Hint(load.message, "Ouvrir les réglages", onSettings)
+        Load.NotConfigured -> Hint("Connecte l’espace client pour voir où en sont les projets.", "Se connecter", onSettings)
+        is Load.Failed -> Hint(load.message, "Voir les connexions", onSettings)
         is Load.Ok -> {
             val active = load.value.filter { !it.isDone }
             if (active.isEmpty()) {
@@ -223,14 +245,14 @@ private fun EspaceBlock(load: Load<List<EspaceProject>>?, onSettings: () -> Unit
 private fun AgendaBlock(load: Load<List<AgendaEvent>>?, onSettings: () -> Unit) {
     when (load) {
         null -> Hint("Je feuillette l’agenda…")
-        Load.NotConfigured -> Hint("Ajoute le lien iCal de l’agenda pour voir tes prochains rendez-vous.", "Ajouter l’agenda", onSettings)
-        is Load.Failed -> Hint(load.message, "Ouvrir les réglages", onSettings)
+        Load.NotConfigured -> Hint("Connecte ton agenda pour voir tes prochains rendez-vous.", "Se connecter", onSettings)
+        is Load.Failed -> Hint(load.message, "Voir les connexions", onSettings)
         is Load.Ok -> {
             if (load.value.isEmpty()) {
                 Hint("Rien de prévu dans les deux semaines. Calme plat !")
             } else {
                 val today = LocalDate.now()
-                load.value.forEach { e ->
+                load.value.take(8).forEach { e ->
                     val day = e.dayLabel(today)
                     Row3(
                         dot = if (day == "aujourd’hui") Oc.Tomato else Oc.Butter,

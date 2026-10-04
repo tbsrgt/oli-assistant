@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Oli</string>
+    <string name="widget_description">Oli, l’état de tes sites et ton prochain rendez-vous.</string>
+    <string name="share_label">Oli</string>
 </resources>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Trafic en clair (http) : nécessaire pour parler à Oli sur le Mac (http://<IP locale>:<port>).
+  Android ne sait pas limiter le clair à des plages d'adresses IP (les <domain-config> ne
+  prennent que des noms exacts), on l'autorise donc ici, mais l'app n'ouvre une connexion en clair
+  vers le Mac QUE si l'adresse du jumelage est locale : 10/8, 172.16/12, 192.168/16, 169.254/16,
+  IPv6 locales ou « .local » (règle MacLink.isLocalHost, vérifiée à la lecture du QR code).
+  Espace client, agenda et Supabase restent en https.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
