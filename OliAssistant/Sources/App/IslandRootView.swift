@@ -547,8 +547,13 @@ struct IslandHeader: View {
             HStack(spacing: 5) {
                 TabButton(icon: "house.fill", view: .overview, state: state)
                 #if !APPSTORE
-                // Oculot: the chat tab is a real terminal; the AI chat stays one click away inside it.
+                // Oculot: a real terminal, and the chat with Oli (on the user's own Claude) right next to it.
                 TabButton(icon: "terminal.fill", view: .terminal, state: state)
+                TabButton(icon: "bubble.left.fill", view: .prompt, state: state, preAction: {
+                    if state.promptContext == nil {
+                        state.promptContext = WindowContextCapture.captureActive(from: state.lastExternalApp)
+                    }
+                })
                 #else
                 TabButton(icon: "bubble.left.fill", view: .prompt, state: state, preAction: {
                     if state.promptContext == nil {
