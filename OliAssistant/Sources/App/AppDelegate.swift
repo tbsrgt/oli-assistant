@@ -134,6 +134,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if PhoneBridge.enabled { PhoneBridge.shared.start() }
         GithubPoller.shared.start()
         WidgetSnapshotWriter.shared.start()
+        StarPower.shared.start()        // mode étoile : nouveau rendez-vous / mail d'Oculot
+        OculotAgenda.shared.start()     // agenda Oculot en direct (appels à prendre, nouveautés) si débloqué
+        MailCenter.shared.start()       // mails : relevés toutes les 5 min (lecture seule)
+        OliAutomations.shared.start()   // routines : point du matin, alertes en bulle, rendez-vous, récap du soir
+        #if DEBUG
+        // Dev only: `scripts/oli-desktop.sh` drives desktop Oli for screenshots (no mouse/keyboard needed):
+        // hub | close | say | follow | wander | still | settings | home
+        DistributedNotificationCenter.default().addObserver(forName: Notification.Name("studio.oculot.oli.desktop"),
+                                                            object: nil, queue: .main) { note in
+            let cmd = note.object as? String ?? ""
+            Task { @MainActor in
+                let d = DesktopOliController.shared
+                switch cmd {
+                case "hub":
+                    if d.isOnDesktop { d.openHub() } else {
+                        d.flyOutOrHome()
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { DesktopOliController.shared.openHub() }
+                    }
+                case "close":    OliBubbleCenter.shared.closeAll()
+                case "say":      d.say("Démo : un site vient de tomber, je te montre ?", tone: .alert, button: ("Voir", {}))
+                case "follow":   DesktopOliMotion.current = .follow
+                case "wander":   DesktopOliMotion.current = .wander
+                case "still":    DesktopOliMotion.current = .still
+                case "google":   Task { _ = await MailAccounts.connectGoogle(); NotificationCenter.default.post(name: .hookExpand, object: IslandView.inbox) }
+                case "star":     StarPower.shared.fire("Démo : nouveau mail d’Oculot ✨")
+                case "home":     if d.isOnDesktop { d.flyHome() }
+                case "settings": NotificationCenter.default.post(name: .openFullSettings, object: "home")
+                default: break
+                }
+            }
+        }
+        #endif
         NotificationCenter.default.addObserver(self, selector: #selector(openSettingsFromNotification(_:)),
                                                name: .openFullSettings, object: nil)
         // After the greeting ends, fly Oli back to the desktop if it was there at last quit

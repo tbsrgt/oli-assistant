@@ -79,6 +79,7 @@ struct DesktopBotView: View {
                 engine.drawHandsAndExtras(context: c, size: size)
             }
         }
+        .starPower()   // new appointment / mail from Oculot: rainbow Oli (StarPower.swift)
         .onChange(of: appState.effectiveState) { _, newState in
             engine.setState(newState)
         }
@@ -99,6 +100,8 @@ struct DesktopBotView: View {
 /// - **Alert**: `pendingApproval`/`pendingQuestion` goes non-nil → surprised emote →
 ///   `retractForAlert()` (panel gone, flag stays true) → both nil → `launchFlyIfNeeded()`.
 /// - **User flies home**: double-click → `flyHome()` → full teardown.
+/// - **Click**: opens Oli's hub (`OliBubbleCenter`, DesktopOliHub.swift). Motion mode
+///   (Fixe / Me suit / Se promène) is applied each frame in `move(panel:mouse:)`.
 @MainActor
 final class DesktopOliController {
     static let shared = DesktopOliController()
@@ -123,6 +126,12 @@ final class DesktopOliController {
 
     // Deferred single-click slap
     private var pendingSlapWorkItem: DispatchWorkItem?
+
+    // Motion (DesktopOliHub): follow the mouse or wander around
+    private var wanderTarget: CGPoint?
+    private var nextWanderAt: Date = .distantPast
+    private var movedSincePersist = false
+    private var lastMoveAt: Date = .distantPast
 
     // Sleep detection
     private var lastAgentActive: Date = .distantPast
@@ -150,11 +159,24 @@ final class DesktopOliController {
 
     static let panelSize: CGFloat = DesktopOliLogic.panelSize
 
+    // MARK: - « Oli reste chez lui » (Réglages)
+
+    static let staysHomeKey = "oliStaysHome"
+    /// Checked in Réglages: Oli never leaves the notch (no launch fly, no drag-out, no shortcut).
+    static var staysHome: Bool {
+        get { UserDefaults.standard.bool(forKey: staysHomeKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: staysHomeKey)
+            if newValue { shared.flyHome() }   // already outside: back home now
+        }
+    }
+
     // MARK: - Keyboard shortcut toggle (⌃⌥D)
 
     /// Fly Oli to the desktop if not there, or bring him back if he is.
     func flyOutOrHome() {
         if phase == .home {
+            guard !Self.staysHome else { return }
             UserDefaults.standard.set(true, forKey: DesktopOliController.enabledKey)
             launchFlyIfNeeded()
         } else if phase == .onDesktop {
@@ -162,12 +184,34 @@ final class DesktopOliController {
         }
     }
 
+    var isOnDesktop: Bool { phase == .onDesktop && panel != nil }
+
+    /// True for Oli's own desktop panel (the hub ignores clicks on it).
+    func owns(_ window: NSWindow?) -> Bool { window != nil && window === panel }
+
+    /// Oli says something: a bubble when he is on the desktop, else a notification for what matters.
+    func say(_ text: String, tone: PillTone, button: (String, @MainActor () -> Void)? = nil) {
+        if let p = panel, phase == .onDesktop {
+            OliBubbleCenter.shared.show(text, tone: tone, button: button, oliFrame: p.frame)
+            engine?.triggerEmote(tone == .alert ? .surprised : .happy, duration: 0.9, silent: true)
+            if tone == .alert { SoundEngine.shared.play("error") } else if tone == .warn { SoundEngine.shared.play("peek") }
+        } else if tone != .neutral || button != nil {
+            SystemNotify.post(title: "Oli", body: text, id: "oli-say-\(abs(text.hashValue))")
+        }
+    }
+
+    /// Open Oli's hub next to him (from the bubble, a shortcut…).
+    func openHub() {
+        guard let p = panel, phase == .onDesktop else { return }
+        OliBubbleCenter.shared.openHub(oliFrame: p.frame)
+    }
+
     // MARK: - Install (from drag-drop)
 
     /// Promote `ghostPanel` (the drag ghost) or create a fresh panel as the desktop Oli,
     /// centered on `screenPoint`. Called by `IslandWindowController.finishDrag`.
     func install(ghostPanel: NSPanel?, at screenPoint: NSPoint) {
-        guard panel == nil, phase == .home else { ghostPanel?.close(); return }
+        guard panel == nil, phase == .home, !Self.staysHome else { ghostPanel?.close(); return }
         let s = DesktopOliController.panelSize
 
         let p: NSPanel
@@ -246,6 +290,7 @@ final class DesktopOliController {
     /// Fly a new panel from the notch to the saved desktop position.
     /// Called by AppDelegate after `.greetComplete`, and by the alert-return path.
     func launchFlyIfNeeded() {
+        guard !Self.staysHome else { return }
         guard UserDefaults.standard.bool(forKey: DesktopOliController.enabledKey) else { return }
         guard phase == .home else { return }
         guard panel == nil else { return }
@@ -322,6 +367,7 @@ final class DesktopOliController {
     /// Animate panel to notch then fully tear down.
     func flyHome() {
         guard let p = panel else { return }
+        OliBubbleCenter.shared.closeAll()
         phase = .home
         pendingSlapWorkItem?.cancel()
         stopPolling()
@@ -350,6 +396,7 @@ final class DesktopOliController {
     /// `launchFlyIfNeeded` restores Oli once the alert is dismissed.
     private func retractForAlert() {
         guard let p = panel else { return }
+        OliBubbleCenter.shared.closeAll()
         stopPolling()
         removeEventMonitors()
         cancellables.removeAll()
@@ -392,6 +439,7 @@ final class DesktopOliController {
     }
 
     private func fullTearDown() {
+        OliBubbleCenter.shared.closeAll()
         phase = .home
         cancellables.removeAll()
         pendingSlapWorkItem?.cancel()
@@ -531,6 +579,49 @@ final class DesktopOliController {
             viewState?.isSleeping = shouldSleep
             engine?.setState(isSleeping ? .sleeping : AppState.shared.effectiveState)
         }
+
+        move(panel: p, mouse: mouse)
+    }
+
+    // MARK: - Motion (Fixe / Me suit / Se promène)
+
+    private func move(panel p: NSPanel, mouse: NSPoint) {
+        guard !isDragging, !OliBubbleCenter.shared.hubOpen else { return }
+        let s = DesktopOliController.panelSize
+        let center = CGPoint(x: p.frame.midX, y: p.frame.midY)
+        var next: CGPoint?
+        switch DesktopOliMotion.current {
+        case .still:
+            wanderTarget = nil
+        case .follow:
+            next = DesktopOliMotionLogic.followStep(center: center, mouse: mouse)
+        case .wander:
+            // Asleep, or the cursor is coming to click him: Oli stays put.
+            if isSleeping || hypot(mouse.x - center.x, mouse.y - center.y) < 110 { break }
+            if let t = wanderTarget {
+                next = DesktopOliMotionLogic.walkStep(center: center, target: t)
+                if next == nil {   // arrived: a little pause before the next stroll
+                    wanderTarget = nil
+                    nextWanderAt = Date().addingTimeInterval(.random(in: 3...8))
+                }
+            } else if Date() >= nextWanderAt {
+                let screen = p.screen ?? NSScreen.main!
+                let m = DesktopOliLogic.clampMargin + s / 2
+                wanderTarget = DesktopOliMotionLogic.wanderTarget(from: center, bounds: screen.visibleFrame.insetBy(dx: m, dy: m))
+            }
+        }
+        if let c = next {
+            let origin = clampToVisibleFrame(NSPoint(x: c.x - s / 2, y: c.y - s / 2))
+            if origin != p.frame.origin {
+                p.setFrameOrigin(origin)
+                OliBubbleCenter.shared.follow(oliFrame: p.frame)
+                movedSincePersist = true
+                lastMoveAt = .now
+            }
+        } else if movedSincePersist && Date.now.timeIntervalSince(lastMoveAt) > 1 {
+            movedSincePersist = false
+            persistPosition()
+        }
     }
 
     // MARK: - Event monitors
@@ -562,6 +653,8 @@ final class DesktopOliController {
                     NSPoint(x: self.dragOriginAtStart.x + dx, y: self.dragOriginAtStart.y + dy))
                 p.setFrameOrigin(newOrigin)
                 self.viewState?.lookOrigin = self.lookOriginFor(panel: p)
+                OliBubbleCenter.shared.closeHub()
+                OliBubbleCenter.shared.follow(oliFrame: p.frame)
             }
             return event
         }
@@ -610,7 +703,12 @@ final class DesktopOliController {
             flyHome()
         } else {
             pendingSlapWorkItem?.cancel()
-            let item = DispatchWorkItem { [weak self] in self?.engine?.slap() }
+            // Un clic : Oli ouvre son panneau (du nouveau, accueil, actions, routines, connexions).
+            let item = DispatchWorkItem { [weak self] in
+                guard let self, let p = self.panel else { return }
+                self.engine?.triggerEmote(.happy, duration: 0.6, silent: true)
+                OliBubbleCenter.shared.toggleHub(oliFrame: p.frame)
+            }
             pendingSlapWorkItem = item
             DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: item)
         }

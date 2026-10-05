@@ -383,6 +383,7 @@ struct BotPlacement: View {
             } else {
                 BotCanvasView(state: state, particleOverhang: overhang)
                     .frame(width: canvasSize, height: canvasSize + overhang)
+                    .starPower()   // new appointment / mail from Oculot: rainbow Oli (StarPower.swift)
                     .opacity(state.isDraggingBot || state.oliOnDesktop ? 0 : opacity)
                     .position(x: cx, y: cy - overhang / 2)
                     .animation(.spring(response: 0.5, dampingFraction: 0.72), value: cx)
@@ -513,7 +514,7 @@ struct IslandContentView: View {
                     // Views that fill available height instead of the fixed 98pt content frame:
                     // chat (prompt) is always flexible; mail is flexible only when active so
                     // it doesn't push the ZStack taller when inactive.
-                    let isTall = v == .prompt || (v == .mail && active) || (v == .terminal && active)
+                    let isTall = v == .prompt || (v == .mail && active) || (v == .terminal && active) || (v == .automations && active) || ([.tidy, .inbox, .agenda].contains(v) && active)
                     let anim: Animation = active
                         ? .spring(response: 0.4, dampingFraction: 0.8).delay(0.16)
                         : .easeIn(duration: 0.16)
@@ -546,6 +547,9 @@ struct IslandHeader: View {
             // Left: tab capsules
             HStack(spacing: 5) {
                 TabButton(icon: "house.fill", view: .overview, state: state)
+                // Oculot: mails and agenda, right after home: they matter most.
+                TabButton(icon: "envelope.fill", view: .inbox, state: state)
+                TabButton(icon: "calendar", view: .agenda, state: state)
                 #if !APPSTORE
                 // Oculot: a real terminal, and the chat with Oli (on the user's own Claude) right next to it.
                 TabButton(icon: "terminal.fill", view: .terminal, state: state)
@@ -561,7 +565,6 @@ struct IslandHeader: View {
                     }
                 })
                 #endif
-                TabButton(icon: "plus", view: .upload, state: state)
             }
             .padding(.leading, 14)
 
@@ -570,10 +573,17 @@ struct IslandHeader: View {
             // Right: plan pill (GitHub build, home view only) + action icons
             HStack(spacing: 8) {
                 #if !APPSTORE
-                if state.view == .overview && state.showPlanInNotch && state.planRelayInstalled {
+                // No room left beside the notch with the new tabs: the « Quota Claude » home tile shows it.
+                if false && state.view == .overview && state.showPlanInNotch && state.planRelayInstalled {
                     ClaudePlanHeaderPill(state: state)
                 }
                 #endif
+                // Right of the notch (the left side is full): drop a file, automations, tidy.
+                HStack(spacing: 5) {
+                    TabButton(icon: "plus", view: .upload, state: state)
+                    TabButton(icon: "bolt.fill", view: .automations, state: state)
+                    TabButton(icon: "sparkles", view: .tidy, state: state)
+                }
                 HStack(spacing: 14) {
                     Button(action: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {

@@ -21,6 +21,10 @@ struct IslandViewContent: View {
         case .mail:      MailComposeView(state: state)
         case .prompt:    PromptView(state: state)
         case .terminal:  TerminalPanelView(state: state)
+        case .automations: AutomationsIslandView(state: state)
+        case .tidy:      TidyIslandView(state: state)
+        case .inbox:     MailIslandView(state: state)
+        case .agenda:    AgendaIslandView(state: state)
         case .searching: SearchingView(state: state)
         case .result:    ResultView(state: state)
         case .note:      NoteView(state: state)
@@ -2958,14 +2962,14 @@ struct AgentPillsView: View {
     }
 
     private let columns = [
-        GridItem(.flexible(), spacing: 4),
-        GridItem(.flexible(), spacing: 4)
+        GridItem(.flexible(), spacing: 6),
+        GridItem(.flexible(), spacing: 6)
     ]
 
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            LazyVGrid(columns: columns, spacing: 4) {
+            LazyVGrid(columns: columns, spacing: 6) {
                 ForEach(displayTasks) { task in
                     #if !APPSTORE
                     if task.id == "integration_music" {
@@ -3014,35 +3018,47 @@ struct AgentPill: View {
         task.id == "integration_claude" ? "VS Code" : task.name
     }
 
+    private var status: PillStatus { PillStatus.of(task, state: state) }
+
     var body: some View {
-        Button(action: { onTap() }) {
+        let st = status
+        let alert = st.tone == .alert
+        return Button(action: { onTap() }) {
             ZStack(alignment: .topTrailing) {
-                ZStack {
-                    Capsule()
-                        .fill(isHovered
-                              ? Color(hex: effectiveColor).opacity(0.18)
-                              : Color(hex: "#0E0F11"))
-                    Capsule()
-                        .stroke(Color(hex: effectiveColor).opacity(isHovered ? 0.55 : 0.14), lineWidth: 1)
-                    HStack(spacing: 0) {
-                        MiniBotCanvasView(task: task)
-                            .frame(width: 22 / 0.6, height: 22 / 0.6)
-                            .frame(width: 22, height: 22, alignment: .center)
-                            .padding(.leading, 8)
-                        Spacer()
+                HStack(spacing: 8) {
+                    MiniBotCanvasView(task: task)
+                        .frame(width: 26 / 0.6, height: 26 / 0.6)
+                        .frame(width: 26, height: 26, alignment: .center)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(displayName)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color(hex: isHovered ? "#FFFFFF" : "#E4E6EA"))
+                            .lineLimit(1)
+                        HStack(spacing: 4) {
+                            Circle().fill(Color(hex: st.tone.hex)).frame(width: 5, height: 5)
+                            Text(st.text)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(Color(hex: st.tone == .neutral ? "#9398A1" : st.tone.hex))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
                     }
-                    Text(displayName)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(isHovered
-                                         ? Color(hex: effectiveColor).lighter(by: 0.3)
-                                         : Color(hex: "#6B7079"))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity)
-                .frame(height: 28)
-                .shadow(color: Color(hex: effectiveColor).opacity(isHovered ? 0.35 : 0), radius: 10, x: 0, y: 2)
+                .padding(.leading, 8)
+                .padding(.trailing, 6)
+                .frame(maxWidth: .infinity, minHeight: 42, maxHeight: 42, alignment: .leading)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(alert ? Color(hex: "#F4505E").opacity(isHovered ? 0.22 : 0.14)
+                                    : isHovered ? Color(hex: effectiveColor).opacity(0.16) : Color(hex: "#16171A"))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(alert ? Color(hex: "#F4505E").opacity(0.55) : Color(hex: effectiveColor).opacity(isHovered ? 0.55 : 0.12), lineWidth: 1)
+                )
+                .shadow(color: Color(hex: effectiveColor).opacity(isHovered ? 0.30 : 0), radius: 10, x: 0, y: 2)
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 // Alert badge (approval / finished / error)
                 if let badge = task.pillBadge {
@@ -3052,8 +3068,8 @@ struct AgentPill: View {
             }
         }
         .buttonStyle(.plain)
-        .scaleEffect(isHovered ? 1.04 : 1.0)
-        .brightness(isHovered ? 0.06 : 0)
+        .help("\(displayName) : \(st.text)")
+        .scaleEffect(isHovered ? 1.02 : 1.0)
         .onHover { newHover in
             guard !swapping else { return }
             withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) { isHovered = newHover }

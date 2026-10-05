@@ -5,9 +5,11 @@ import AppKit
 // What the main card shows when Oli opens and no Claude Code session is running: one line per
 // thing that matters to the studio (sites, projects, Instagram), most urgent first, each line
 // jumping to its pill. Replaces the generic « Claude Code · Connected » card, which said nothing.
+// Réglages → Accueil switches it to a bento of tiles (HomeBentoView) or back to this list.
 
 struct OculotHomeView: View {
     @ObservedObject var state: AppState
+    @ObservedObject private var layout = HomeLayoutStore.shared
 
     private struct Line: Identifiable {
         let id: String
@@ -115,6 +117,12 @@ struct OculotHomeView: View {
             .lineLimit(1)
             .padding(.leading, 8)
             .padding(.trailing, 28)   // keep clear of the card's corner button
+            if layout.style == .bento && !layout.visibleTiles.isEmpty {
+                // Réglages → Accueil : the tiles chosen there, two rows fit in the notch.
+                HomeBentoView(state: state, columns: 3, tileHeight: 38, spacing: 5, maxRows: 2)
+                    .padding(.leading, 4)
+                    .padding(.top, 2)
+            } else {
             if lines.isEmpty {
                 Text("Branche l’espace client ou ajoute des sites dans Réglages pour que je te tienne au courant.")
                     .font(.system(size: 11))
@@ -132,7 +140,8 @@ struct OculotHomeView: View {
                             .font(.system(size: 11, weight: line.urgent ? .bold : .semibold))
                             .foregroundColor(Color(hex: line.urgent ? "#FF8D97" : "#C5C8CD"))
                             .lineLimit(1)
-                            .frame(width: 44, alignment: .leading)
+                            .fixedSize()
+                            .frame(minWidth: 44, alignment: .leading)
                         Text(line.detail)
                             .font(.system(size: 10.5))
                             .foregroundColor(Color(hex: line.urgent ? "#FF8D97" : "#9398A1"))
@@ -145,6 +154,7 @@ struct OculotHomeView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+            }
             }
         }
         .padding(.top, 8)

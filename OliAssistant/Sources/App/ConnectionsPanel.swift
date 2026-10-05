@@ -67,7 +67,7 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
         switch self {
         case .email: return EmailSender.keys
         case .espace: return ["espace-token", "espace-url"]
-        case .agenda: return ["agenda-ics-url"]
+        case .agenda: return ["agenda-ics-url", "agenda-password", "agenda-member"]
         case .sites, .phone: return []
         case .instagram: return ["instagram-token", "instagram-user-id"]
         case .github: return ["github-token"]
@@ -106,6 +106,7 @@ enum ConnectionKind: String, CaseIterable, Identifiable {
 }
 
 struct ConnectionsPanel: View {
+    @ObservedObject private var oneClick = OneClickConnect.shared
     @State private var open: ConnectionKind? = nil
     @State private var version = 0          // bumps after a sheet closes, to refresh the rows
 
@@ -120,6 +121,12 @@ struct ConnectionsPanel: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .oliConnectionsChanged)) { _ in version += 1 }
+        // « Se connecter » from Oli's bubble or the home tiles, for a service that needs its form.
+        .onReceive(oneClick.$pendingSheet) { kind in
+            guard let kind else { return }
+            open = kind
+            oneClick.pendingSheet = nil
+        }
         .sheet(item: $open, onDismiss: { version += 1 }) { kind in
             ConnectSheet(kind: kind) { open = nil }
         }
@@ -145,11 +152,12 @@ private struct ConnectionRow: View {
             Spacer()
             if on {
                 Button("Gérer", action: action).buttonStyle(.bordered)
-            } else if kind == .espace {
-                // Un clic : l'admin de l'espace renvoie le jeton à Oli (oli://connect).
-                Button("Se connecter") { EspaceConnect.start() }.buttonStyle(.borderedProminent)
-            } else {
+            } else if [.email, .agenda, .sites, .phone].contains(kind) {
+                // Needs a password or a list: the sheet.
                 Button("Se connecter", action: action).buttonStyle(.borderedProminent)
+            } else {
+                // Un clic : session du Mac, ou page du service + jeton repris au presse-papiers (OneClickConnect).
+                OneClickConnectButton(kind: kind)
             }
         }
         .padding(.vertical, 5).padding(.horizontal, 8)
@@ -203,6 +211,12 @@ private struct ConnectSheet: View {
         .padding(20)
         .frame(width: 440)
         .onAppear(perform: prefill)
+        // Another provider typed in: the old server (OVH…) must not stay, or Gmail would be tried at OVH.
+        .onChange(of: id) { old, new in
+            guard kind == .email else { return }
+            let d = { (s: String) in s.split(separator: "@").last.map { $0.lowercased() } ?? "" }
+            if !old.isEmpty, d(old) != d(new) { hostField = ""; port = "" }
+        }
     }
 
     // MARK: Fields per service
@@ -360,7 +374,7 @@ private struct ConnectSheet: View {
             let preset = EmailSender.preset(for: value)
             let host = hostField.trimmingCharacters(in: .whitespaces).isEmpty ? preset.host : hostField
             let p = Int(port) ?? preset.port
-            let account = EmailAccount(address: value, name: extra, password: secret, host: host, port: p)
+            let account = EmailAccount(address: value, name: extra, password: MailAccounts.cleanAppPassword(secret), host: host, port: p)
             do { try await EmailSender.test(account); return nil } catch { return error.localizedDescription }
         case .espace:
             let base = extra.trimmingCharacters(in: .whitespaces).isEmpty ? "https://espace.oculot.studio" : extra
@@ -412,13 +426,17 @@ private struct ConnectSheet: View {
         func put(_ key: String, _ v: String) { v.isEmpty ? k.remove(key) : k.set(key, value: v) }
         switch kind {
         case .email:
-            put("mail-address", value); put("mail-password", secret); put("mail-name", extra.trimmingCharacters(in: .whitespaces))
+            put("mail-address", value); put("mail-password", MailAccounts.cleanAppPassword(secret)); put("mail-name", extra.trimmingCharacters(in: .whitespaces))
             put("mail-host", hostField.trimmingCharacters(in: .whitespaces)); put("mail-port", port.trimmingCharacters(in: .whitespaces))
         case .espace:
             put("espace-token", value); put("espace-url", extra.trimmingCharacters(in: .whitespaces))
             EspacePoller.shared.pollNow(); AppState.shared.activatePill("integration_espace")
         case .agenda:
             put("agenda-ics-url", id.trimmingCharacters(in: .whitespacesAndNewlines)); AgendaPoller.shared.pollNow()
+            if !secret.isEmpty, let m = agendaMember?.id {   // calls to take, news, new appointments (OculotAgenda)
+                put("agenda-password", secret); put("agenda-member", m)
+                Task { await OculotAgenda.shared.refresh() }
+            }
             AppState.shared.activatePill("integration_agenda")
         case .sites:
             AppState.shared.sitesManual = sites; SitesPoller.shared.checkNow()

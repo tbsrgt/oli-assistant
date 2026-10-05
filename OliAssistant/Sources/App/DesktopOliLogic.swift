@@ -71,3 +71,40 @@ enum DesktopOliLogic {
         )
     }
 }
+
+// MARK: - Motion (Me suit / Se promène)
+
+/// Pure movement maths (unit-testable, no AppKit).
+enum DesktopOliMotionLogic {
+    /// Where Oli wants to sit when following: down-right of the cursor (AppKit y-up).
+    static let followOffset = CGSize(width: 72, height: -72)
+    /// Cursor this close to Oli's center: Oli stops, so he can be clicked.
+    static let catchRadius: CGFloat = 70
+
+    /// Next center when following the cursor. Returns nil when Oli should not move.
+    static func followStep(center: CGPoint, mouse: CGPoint, ease: CGFloat = 0.08) -> CGPoint? {
+        if hypot(mouse.x - center.x, mouse.y - center.y) < catchRadius { return nil }
+        let target = CGPoint(x: mouse.x + followOffset.width, y: mouse.y + followOffset.height)
+        let dx = target.x - center.x, dy = target.y - center.y
+        guard hypot(dx, dy) > 2 else { return nil }
+        return CGPoint(x: center.x + dx * ease, y: center.y + dy * ease)
+    }
+
+    /// One step toward `target` at `speed` px per frame, slowing down on arrival.
+    static func walkStep(center: CGPoint, target: CGPoint, speed: CGFloat = 1.8) -> CGPoint? {
+        let dx = target.x - center.x, dy = target.y - center.y
+        let d = hypot(dx, dy)
+        guard d > 1.5 else { return nil }
+        let v = min(speed, max(0.6, d * 0.06))
+        return CGPoint(x: center.x + dx / d * v, y: center.y + dy / d * v)
+    }
+
+    /// A random spot within `radius` of `center`, kept inside `bounds` (center coordinates).
+    static func wanderTarget(from center: CGPoint, bounds: CGRect, radius: CGFloat = 280,
+                             random: () -> CGFloat = { CGFloat.random(in: 0...1) }) -> CGPoint {
+        let angle = random() * 2 * .pi
+        let dist = 80 + random() * (radius - 80)
+        let p = CGPoint(x: center.x + cos(angle) * dist, y: center.y + sin(angle) * dist)
+        return CGPoint(x: min(max(p.x, bounds.minX), bounds.maxX), y: min(max(p.y, bounds.minY), bounds.maxY))
+    }
+}

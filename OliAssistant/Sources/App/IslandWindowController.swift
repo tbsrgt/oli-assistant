@@ -156,6 +156,7 @@ final class IslandWindowController: NSWindowController {
                     self.islandPanel.makeKey()
                 }
                 #if !APPSTORE
+                if [.automations, .agenda, .inbox].contains(newView) { self.islandPanel.makeKey() }   // its text fields need the keyboard
                 if newView == .terminal {
                     self.islandPanel.makeKey()
                     DispatchQueue.main.async { OliTerminal.shared.focus() }
@@ -215,7 +216,7 @@ final class IslandWindowController: NSWindowController {
         // the chevron (or a pill / home tab) closes it.
         fsm.isHeldOpen = {
             AppState.shared.pendingApproval != nil ||
-            (AppState.shared.view == .terminal && AppState.shared.mode == .expanded)
+            ([.terminal, .automations, .tidy, .inbox, .agenda].contains(AppState.shared.view) && AppState.shared.mode == .expanded)
         }
     }
 
@@ -390,7 +391,7 @@ final class IslandWindowController: NSWindowController {
 
     func collapse() {
         // Explicit close from the terminal (chevron): leave the terminal first, the shell keeps running.
-        if state.view == .terminal && state.pendingApproval == nil { state.view = defaultView() }
+        if [.terminal, .automations, .tidy, .inbox, .agenda].contains(state.view) && state.pendingApproval == nil { state.view = defaultView() }
         guard fsm.isHeldOpen?() != true else { return }
         state.isPinned = false
         finishedPinTimer?.cancel()
@@ -650,10 +651,16 @@ final class IslandWindowController: NSWindowController {
         DistributedNotificationCenter.default().addObserver(forName: Notification.Name("studio.oculot.oli.openIsland"),
                                                             object: nil, queue: .main) { [weak self] note in
             let wantsTerminal = (note.object as? String) == "terminal"
+            let wantsAutomations = (note.object as? String) == "automations"
+            let wantsTidy = (note.object as? String) == "tidy"
+            let other = IslandView(rawValue: note.object as? String ?? "")
             Task { @MainActor in
                 guard let self else { return }
                 self.fsm.openedExternally()
                 if wantsTerminal { self.islandPanel.makeKey(); self.expand(to: .terminal); return }
+                if wantsAutomations { self.expand(to: .automations); return }
+                if wantsTidy { self.expand(to: .tidy); return }
+                if let other, [.inbox, .agenda].contains(other) { self.expand(to: other); return }
                 self.expand(to: BriefingCenter.shared.viewForHover() ?? self.defaultView())
             }
         }

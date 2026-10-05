@@ -71,6 +71,9 @@ final class KeychainStore: @unchecked Sendable {
         "espace-token", "espace-url",
         "mail-address", "mail-name", "mail-password", "mail-host", "mail-port", "phone-token",
         "agenda-ics-url", "pagespeed-api-key", "instagram-token", "instagram-user-id",
+        // Every key Oli writes must be listed here, or it is forgotten at the next launch.
+        "agenda-password", "agenda-member",                       // OculotAgenda (appels à prendre, nouveau RDV)
+        "mail-imap-host", "mail-extra-accounts", "google-oauth-client",   // MailAccounts, GoogleOAuth
     ]
 
     private init() {

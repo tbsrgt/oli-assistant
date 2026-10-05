@@ -68,6 +68,7 @@ struct SettingsView: View {
     @State private var sitesManual: String  = AppState.shared.sitesManual
     @State private var claudeConnected: Bool = HookServer.claudeHooksInstalled()
     @AppStorage("authGateOff") private var authGateOff = false
+    @AppStorage(DesktopOliController.staysHomeKey) private var oliStaysHome = false
     @State private var mailAddress: String = KeychainStore.shared.get("mail-address") ?? ""
     @State private var mailName: String = KeychainStore.shared.get("mail-name") ?? ""
     @State private var mailPassword: String = KeychainStore.shared.get("mail-password") ?? ""
@@ -130,6 +131,7 @@ struct SettingsView: View {
                         set: { if let v = $0 { selectedSection = v; statusMessage = "" } }
                     )) {
                         SettingsSidebarRow(title: "General",      icon: "gearshape.fill",                    color: "#8E939C").tag("general")
+                        SettingsSidebarRow(title: "Accueil",      icon: "square.grid.3x2.fill",              color: "#FF5B37").tag("home")
                         SettingsSidebarRow(title: "Active pills", icon: "square.grid.2x2.fill",              color: "#F5A524").tag("activepills")
                         SettingsSidebarRow(title: "Agents",       icon: "terminal.fill",                     color: "#3B9EFF").tag("agents")
                         SettingsSidebarRow(title: "Chat",         icon: "bubble.left.and.bubble.right.fill", color: "#E07950").tag("chat")
@@ -198,6 +200,7 @@ struct SettingsView: View {
     private var sectionTitle: String {
         switch selectedSection {
         case "general":      return "General"
+        case "home":         return "Accueil"
         case "activepills":  return "Active pills"
         case "agents":       return "Agents"
         case "chat":         return "Chat"
@@ -209,6 +212,7 @@ struct SettingsView: View {
 
     @ViewBuilder private var sectionContent: some View {
         switch selectedSection {
+        case "home":         HomeSettingsView()
         case "activepills":  activePillsSection
         case "agents":       agentsSection
         case "chat":         chatSection
@@ -224,6 +228,17 @@ struct SettingsView: View {
         GroupBox {
             Toggle("Déverrouiller Oli avec Touch ID à la première ouverture", isOn: Binding(get: { !authGateOff }, set: { authGateOff = !$0 }))
                 .toggleStyle(.switch).padding(4)
+        }
+        GroupBox {
+            VStack(alignment: .leading, spacing: 4) {
+                Toggle("Oli reste chez lui", isOn: Binding(get: { oliStaysHome },
+                                                           set: { DesktopOliController.staysHome = $0; oliStaysHome = $0 }))
+                    .toggleStyle(.checkbox)
+                Text("Coché, Oli reste dans l’encoche en haut : il ne sort plus sur le bureau.")
+                    .font(.system(size: 11)).foregroundColor(.secondary)
+            }
+            .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         GroupBox("Sound") {
             VStack(alignment: .leading, spacing: 10) {

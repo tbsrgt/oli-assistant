@@ -13,6 +13,10 @@ enum IslandView: String, CaseIterable {
     case confused, upload, uploading, choose, mail, prompt
     case searching, result, note, settings, greeting, wardrobe
     case terminal   // Oculot: real shell in the notch
+    case automations   // Oculot: « Quand… alors… » rules (AutomationsIslandView)
+    case tidy          // Oculot: « Oli range » — where, what, how (TidyIslandView)
+    case inbox         // Oculot: the mailbox, sorted with Claude (MailIslandView)
+    case agenda        // Oculot: the next 14 days (AgendaIslandView)
 }
 
 // MARK: - Bot State
@@ -195,6 +199,10 @@ enum IslandConst {
         .mail:      ViewLayout(height: 260, botX: 56,  botY: nil, botDiameter: 46, agentMode: .column),
         .prompt:    ViewLayout(height: 160, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),
         .terminal:  ViewLayout(height: 340, botX: 32,  botY: 58,  botDiameter: 34, agentMode: .none),
+        .automations: ViewLayout(height: 330, botX: 32, botY: 58,  botDiameter: 34, agentMode: .none),
+        .tidy:      ViewLayout(height: 300, botX: 32,  botY: 58,  botDiameter: 34, agentMode: .none),
+        .inbox:     ViewLayout(height: 340, botX: 32,  botY: 58,  botDiameter: 34, agentMode: .none),
+        .agenda:    ViewLayout(height: 340, botX: 32,  botY: 58,  botDiameter: 34, agentMode: .none),
         .searching: ViewLayout(height: 160, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),
         .result:    ViewLayout(height: 160, botX: 52,  botY: nil, botDiameter: 44, agentMode: .column),
         .note:      ViewLayout(height: 160, botX: 60,  botY: nil, botDiameter: 50, agentMode: .column),
