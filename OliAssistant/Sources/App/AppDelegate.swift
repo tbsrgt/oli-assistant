@@ -44,6 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let menu = NSMenu()
         menu.addItem(withTitle: "Open Oli", action: #selector(openIsland), keyEquivalent: "")
+        menu.addItem(withTitle: "Bienvenue dans Oli…", action: #selector(openOnboarding), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(.separator())
@@ -53,6 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     // MARK: - Actions
+
+    @objc private func openOnboarding() {
+        OnboardingController.shared.show()
+    }
 
     @objc private func openIsland() {
         islandController?.expand(to: .overview)
@@ -158,6 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case "wander":   DesktopOliMotion.current = .wander
                 case "still":    DesktopOliMotion.current = .still
                 case "google":   Task { _ = await MailAccounts.connectGoogle(); NotificationCenter.default.post(name: .hookExpand, object: IslandView.inbox) }
+                case "onboarding": OnboardingController.shared.show()
                 case "star":     StarPower.shared.fire("Démo : nouveau mail d’Oculot ✨")
                 case "home":     if d.isOnDesktop { d.flyHome() }
                 case "settings": NotificationCenter.default.post(name: .openFullSettings, object: "home")
@@ -170,6 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                name: .openFullSettings, object: nil)
         // After the greeting ends, fly Oli back to the desktop if it was there at last quit
         NotificationCenter.default.addObserver(forName: .greetComplete, object: nil, queue: .main) { _ in
+            MainActor.assumeIsolated { OnboardingController.shared.showIfNeeded() }   // newcomers only
             DesktopOliController.shared.launchFlyIfNeeded()
         }
         #if !APPSTORE

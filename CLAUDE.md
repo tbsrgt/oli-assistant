@@ -27,6 +27,7 @@ agenda, Instagram), avec un terminal intégré.
   Plusieurs boîtes : `MailAccounts.swift` (Trousseau `mail-extra-accounts`, mot de passe d'application repris au presse-papiers) ;
   `GoogleOAuth.swift` (« Se connecter avec Google » : PKCE + retour 127.0.0.1, XOAUTH2 IMAP ; client OAuth « Application de bureau »
   importé depuis ~/Downloads/client_secret_*.json vers le Trousseau `google-oauth-client`).
+  `OnboardingView.swift` : bienvenue en 6 étapes au premier lancement (nouveaux seulement), menu « Bienvenue dans Oli… », `scripts/oli-desktop.sh onboarding`.
   `StarPower.swift` : mode étoile (arc-en-ciel + danse) sur nouveau rendez-vous ou mail d'Oculot ; `scripts/oli-desktop.sh star` (Debug).
   En-tête de l'encoche : 5 onglets à gauche de l'encoche physique, +, ⚡, ✨ à droite (pas de place pour plus).
   Tests : `scripts/test-home.sh`, `scripts/test-tidy.sh`, `scripts/test-mail.sh`, `scripts/test-imap.sh` (faux serveur local). Captures sans souris : `scripts/oli-desktop.sh hub|say|follow|wander|settings` (Debug).

@@ -28,7 +28,7 @@ final class StarPower: ObservableObject {
     }
 
     /// Oli goes star for a few seconds; `reason` is said in a bubble when he is on the desktop.
-    func fire(_ reason: String) {
+    func fire(_ reason: String, speak: Bool = true) {
         let wasActive = isActive
         until = Date().addingTimeInterval(Self.duration)
         objectWillChange.send()
@@ -37,7 +37,7 @@ final class StarPower: ObservableObject {
         NotificationCenter.default.post(name: .triggerEmote, object: BotEmote.happy)
         NotificationCenter.default.post(name: .hookReveal, object: nil)   // the notch peeks out so you see it
         SoundEngine.shared.play("approve")
-        DesktopOliController.shared.say(reason, tone: .ok)
+        if speak { DesktopOliController.shared.say(reason, tone: .ok) }
         appendAppLog("oli.log", "Mode étoile : \(reason)")
     }
 
